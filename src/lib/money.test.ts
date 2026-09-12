@@ -140,10 +140,61 @@ test("expenseByCategory: ไม่นับ transfer/แถวที่ลบ �
   assert.equal(byCat.has("salary"), false); // income ไม่เข้า
   assert.equal([...byCat.values()].reduce((a, b) => a + b, 0), periodTotals(rows).expense);
   // รายจ่ายที่ไม่มีหมวด = ข้อมูลเพี้ยน ต้องล้ม ไม่ใช่รวมเข้าไปเงียบ ๆ
+  // (money.ts โยน Error เปล่าโดยตั้งใจ — assert ที่ข้อความ ไม่ผูกกับคลาส เพื่อไม่เปิดรีวิวเงินรอบใหม่)
   assert.throws(
     () => expenseByCategory([{ kind: "expense", amount: 10, accountId: A, deletedAt: null } as unknown as MoneyRow]),
-    Error,
+    /categoryId/,
   );
+  assert.throws(
+    () =>
+      expenseByCategory([
+        { kind: "expense", amount: 10, accountId: A, categoryId: "", deletedAt: null } as unknown as MoneyRow,
+      ]),
+    /categoryId/, // สตริงว่างต้องเข้าเคสเดียวกับ "ไม่มีหมวด" (fail-closed)
+  );
+});
+
+/* ---- mutation test รอบ 3: 2 จุดที่เทสต์เดิมยังไม่ครอบ (X4/X5) ---- */
+
+test("X4: expenseByCategory ต้องตรวจชนิดเงินก่อนบวก (string/BigInt ต้อง throw)", () => {
+  // ถ้าถอด toSatang() ออกแล้วบวกตรง ๆ string จะต่อกันเงียบ ๆ = ยอดหมวดเพี้ยนแต่ไม่มี error
+  assert.throws(
+    () =>
+      expenseByCategory([
+        { kind: "expense", amount: "100", accountId: A, categoryId: "food", deletedAt: null } as unknown as MoneyRow,
+        { kind: "expense", amount: "250", accountId: A, categoryId: "food", deletedAt: null } as unknown as MoneyRow,
+      ]),
+    TypeError,
+  );
+  assert.throws(
+    () =>
+      expenseByCategory([
+        { kind: "expense", amount: BigInt(100), accountId: A, categoryId: "food", deletedAt: null } as unknown as MoneyRow,
+      ]),
+    TypeError,
+  );
+  assert.throws(
+    () =>
+      expenseByCategory([
+        { kind: "expense", amount: null, accountId: A, categoryId: "food", deletedAt: null } as unknown as MoneyRow,
+      ]),
+    TypeError,
+  );
+});
+
+test("X5: ยอดหมวดเดียวเกิน 2^53 ต้องได้ RangeError (ไม่คืนยอดเพี้ยน)", () => {
+  const cap = 1_000_000_000_000_000 - 1; // เพดาน amount ของ schema.sql (< 1e15) — ต่อแถวเป็น safe integer
+  const rows = Array.from({ length: 10 }, () => ({
+    kind: "expense",
+    amount: cap,
+    accountId: A,
+    categoryId: "rent",
+    deletedAt: null,
+  })) as unknown as MoneyRow[];
+  // 10 × (1e15−1) = 9.999...e15 > 2^53 (9,007,199,254,740,991) → ต้องล้มด้วย RangeError
+  assert.throws(() => expenseByCategory(rows), RangeError);
+  // 9 แถวยังอยู่ในช่วง → ไม่ throw และยอดต้องตรงเป๊ะ
+  assert.equal(expenseByCategory(rows.slice(0, 9)).get("rent"), 9 * cap);
 });
 
 /* ---- เคสที่ verifier เจอ: เงินเป็น string แล้วต่อกันเงียบ ๆ (ยอดผิดแต่ไม่มี error) ---- */
