@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#EAEFF4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0B1220" media="(prefers-color-scheme: dark)">
 <title>จดจ่าย · theme preview (design v1)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,10 +16,10 @@
    ========================================================= */
 :root, .t-light{
   /* §1.1 สี (light) */
-  --bg:#F6F7F9; --surface:#FFFFFF; --surface-2:#F1F3F6;
-  --border:#E3E7ED; --border-strong:#8A93A0;
-  --text:#101828; --text-muted:#667085;
-  --income:#15803D; --expense:#BE123C; --balance:#0E7490; --warn:#B45309;
+  --bg:#EAEFF4; --surface:#FFFFFF; --surface-2:#F1F3F6;
+  --border:#E3E7ED; --border-strong:#7E8794;
+  --text:#101828; --text-muted:#616B7A;
+  --income:#157A3B; --expense:#BE123C; --balance:#0E7490; --warn:#A64E07;
   --focus:#2563EB; --on-accent:#FFFFFF;
   /* color ต้องประกาศที่ scope ไม่ใช่ body — ไม่งั้น subtree .t-dark จะสืบทอด "ค่าที่คำนวณแล้ว" ของโหมดสว่าง */
   color:var(--text); background:var(--bg);
@@ -207,7 +207,7 @@ input{font:inherit;color:inherit}
     <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-5H9v5H5a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19v-8M12 19V5M19 19v-5"/></symbol>
-    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.35 17.66l-1.42 1.41M19.07 4.93l-1.41 1.42"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 6l-6 6 6 6"/></symbol>
     <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 6l6 6-6 6"/></symbol>
@@ -226,7 +226,7 @@ input{font:inherit;color:inherit}
 <main class="devices">
   <section class="frame-wrap">
     <p class="frame-cap cap">โหมดสว่าง · light</p>
-    <div class="device t-light">
+    <div class="device t-light" id="frame-light">
     <!-- จอ 1 · หน้าแรก (§4 S2) -->
     <section class="screen">
       <header class="screen-head">
@@ -439,7 +439,7 @@ input{font:inherit;color:inherit}
   </section>
   <section class="frame-wrap">
     <p class="frame-cap cap">โหมดมืด · dark</p>
-    <div class="device t-dark">
+    <div class="device t-dark" id="frame-dark">
     <!-- จอ 1 · หน้าแรก (§4 S2) -->
     <section class="screen">
       <header class="screen-head">
