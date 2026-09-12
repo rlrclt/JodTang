@@ -7,10 +7,17 @@
  *   3. ยอดรับ/จ่าย: นับเฉพาะ kind in MONEY_KINDS และ deleted_at is null — transfer ไม่เคยเป็นรับ/จ่าย
  *   4. ยอดคงเหลือ: initial_balance + income − expense แล้วบวกผล transfer
  *      (หักฝั่ง account_id · เพิ่มฝั่ง to_account_id)
- *   5. แถวที่ soft delete แล้วต้องไม่กระทบยอดใด ๆ (รวม transfer)
+ *   5. แถวที่ soft delete แล้วต้องไม่กระทบยอดใด ๆ (รวม transfer) — "ลบแล้ว" หมายถึง deletedAt != null เท่านั้น
+ *      (สตริงว่าง '' ไม่ใช่ "ยังไม่ลบ" — เคยเป็น fail-open มาก่อน)
+ *   6. ยอดรวมต้องอยู่ในช่วง Number.isSafeInteger — เกินกว่านั้นเพี้ยนเงียบ (11 แถวที่ขนาดเพดาน 1e15 เพี้ยนจริง 1 สตางค์)
+ *      ฟังก์ชันในไฟล์นี้ throw ทันทีถ้าหลุด ไม่ปล่อยยอดเพี้ยนออกไปแสดง
+ *
+ * ⚠ ไฟล์นี้คำนวณจาก "แถวที่ผู้เรียกส่งมา" — มันบังคับ deleted_at/kind ได้ แต่บังคับ user_id ไม่ได้
+ *   ทุก query ที่ดึงแถวมาให้ฟังก์ชันเหล่านี้ **ต้องมี user_id = <session user>** เสมอ (schema.sql ข้อ 3)
+ *   กรองแค่ deleted_at is null = รวมข้อมูลผู้ใช้คนอื่น (isNull(deletedAt) เพียงอย่างเดียวไม่พอ)
  *
  * ไฟล์นี้ไม่ import อะไรเลยโดยตั้งใจ เพื่อให้เทสต์รันได้ด้วย `node --test` ก่อนมี dependencies
- * (ชั้น query ตอนเฟส 2 ต้องดึง MONEY_KINDS ไปใช้กับ inArray() + isNull(deletedAt) ไม่ใช่เขียนลิสต์เอง)
+ * (ชั้น query ตอนเฟส 2 ต้องดึง MONEY_KINDS ไปใช้กับ inArray() + isNull(deletedAt) + eq(userId, ...) ไม่ใช่เขียนลิสต์เอง)
  */
 
 export const MONEY_KINDS = ["income", "expense"] as const;
@@ -37,7 +44,7 @@ export type Totals = {
 
 /** แถวนี้ถูกนับเป็นยอด "รับ/จ่าย" ไหม — ที่เดียวที่ตัดสินกติกานี้ */
 export function isCounted(row: MoneyRow): boolean {
-  return !row.deletedAt && (row.kind === "income" || row.kind === "expense");
+  return row.deletedAt == null && (row.kind === "income" || row.kind === "expense");
 }
 
 /**
@@ -52,6 +59,11 @@ export function periodTotals(rows: readonly MoneyRow[]): Totals {
     if (row.kind === "income") income += row.amount;
     else expense += row.amount;
   }
+  if (!Number.isSafeInteger(income) || !Number.isSafeInteger(expense)) {
+    throw new RangeError(
+      `ยอดรวมหลุดช่วง safe integer (income=${income} · expense=${expense}) — ยอดเพี้ยนแล้ว ห้ามแสดง`,
+    );
+  }
   return { income, expense, balance: income - expense };
 }
 
@@ -61,17 +73,24 @@ export function accountBalance(
   accountId: string,
   initialBalance = 0,
 ): number {
+  if (!Number.isSafeInteger(initialBalance)) {
+    throw new TypeError(`ยอดตั้งต้นต้องเป็นสตางค์จำนวนเต็มในช่วง safe integer (ได้ ${initialBalance})`);
+  }
   let sum = initialBalance;
   for (const row of rows) {
-    if (row.deletedAt) continue;
+    if (row.deletedAt != null) continue;
     if (row.kind === "income") {
       if (row.accountId === accountId) sum += row.amount;
     } else if (row.kind === "expense") {
       if (row.accountId === accountId) sum -= row.amount;
-    } else {
+    } else if (row.kind === "transfer") {
+      // kind ที่ไม่รู้จักต้องไม่ถูกหักเงินราวกับเป็น transfer (fail-open เดิม)
       if (row.accountId === accountId) sum -= row.amount;
       if (row.toAccountId === accountId) sum += row.amount;
     }
+  }
+  if (!Number.isSafeInteger(sum)) {
+    throw new RangeError(`ยอดคงเหลือหลุดช่วง safe integer (${sum}) — ยอดเพี้ยนแล้ว ห้ามแสดง`);
   }
   return sum;
 }
@@ -88,8 +107,8 @@ const THB_SIGNED = new Intl.NumberFormat("th-TH", {
  * นี่คือที่เดียวที่หาร 100 — ห้ามหาร 100 กระจายในโค้ดอื่น (design.md §1.2)
  */
 export function formatSatang(satang: number, opts: { signed?: boolean } = {}): string {
-  if (!Number.isInteger(satang)) {
-    throw new TypeError(`จำนวนเงินต้องเป็นสตางค์จำนวนเต็ม (ได้ ${satang})`);
+  if (!Number.isSafeInteger(satang)) {
+    throw new TypeError(`จำนวนเงินต้องเป็นสตางค์จำนวนเต็มในช่วง safe integer (ได้ ${satang})`);
   }
   return (opts.signed ? THB_SIGNED : THB).format(satang / 100);
 }
