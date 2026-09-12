@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+/* ธีมสลับด้วยคลาส .dark ที่ <html> (ไม่ใช่ prefers-color-scheme) — design.md §1.7 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+  --color-balance: var(--balance);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-thai);
+  --radius-card: 16px;
+}
+
+/* ค่าโทเคนทั้งหมดคัดจาก docs/design.md §1.1 — ค่าโหมดมืดทับเฉพาะสี (แบบเดียวกับ docs/theme-preview.html) */
+:root {
+  --bg: #EAEFF4;
+  --surface: #FFFFFF;
+  --surface-2: #F1F3F6;
+  --border: #E3E7ED;
+  --border-strong: #7E8794;
+  --text: #101828;
+  --text-muted: #616B7A;
+  --income: #157A3B;
+  --expense: #BE123C;
+  --balance: #0E7490;
+  --warn: #A64E07;
+  --focus: #2563EB;
+  --on-accent: #FFFFFF;
+  --chart-1: #0891B2;
+  --chart-2: #7C3AED;
+  --chart-3: #D97706;
+  --chart-4: #16A34A;
+  --chart-5: #DB2777;
+  --chart-6: #0D9488;
+  --chart-7: #65A30D;
+  --chart-8: #E11D48;
+  --radius-sm: 8px;
+  --radius-btn: 12px;
+  --radius-sheet: 20px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgb(2 6 23 / 0.06);
+  --shadow-sheet: 0 -8px 32px rgb(2 6 23 / 0.18);
+  --shadow-sticky: 0 4px 12px rgb(2 6 23 / 0.06);
+  --tap: 44px;
+  --row-h: 56px;
+  --tab-h: 56px;
+}
+
+.dark {
+  --bg: #0B1220;
+  --surface: #121B2C;
+  --surface-2: #18233A;
+  --border: #24314D;
+  --border-strong: #5B6880;
+  --text: #E6EBF2;
+  --text-muted: #93A0B5;
+  --income: #4ADE80;
+  --expense: #FB7185;
+  --balance: #22D3EE;
+  --warn: #FBBF24;
+  --focus: #60A5FA;
+  --on-accent: #08101F;
+  /* §1.5 โหมดมืดไม่ใช้เงาแยกชั้น — แยกด้วย --surface + --border */
+  --shadow-card: none;
+}
+
+/* §2: ระยะปลอดภัย + ไม่มี scroll แนวนอน + ปิด pull-to-refresh */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
