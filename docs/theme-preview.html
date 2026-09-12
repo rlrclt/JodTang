@@ -88,6 +88,9 @@ input{font:inherit;color:inherit}
 .frame-cap{text-align:center;margin-bottom:8px}
 .device{width:390px;max-width:100%;height:844px;overflow-y:auto;overflow-x:hidden;   /* จอจำลอง 390x844 §1 เป้าอุปกรณ์ */
   background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sheet)}
+/* เปิด /docs/theme-preview.html#frame-light หรือ #frame-dark = ดูโหมดเดียวยาวเต็มจอ 390x844
+   (ใช้ทำสกรีนช็อต docs/preview-*.png — ยึดด้วย position:fixed เพื่อไม่ให้ผลขึ้นกับตำแหน่ง scroll) */
+.device:target{position:fixed;top:0;left:0;z-index:1;width:390px;height:844px;border:0;border-radius:0}
 
 /* ---------- จอในเครื่องจำลอง ---------- */
 .screen{position:relative;display:flex;flex-direction:column;min-height:844px}
