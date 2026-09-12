@@ -5,7 +5,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { accountBalance, formatRowAmount, formatSatang, isCounted, periodTotals } from "./money.ts";
+import {
+  accountBalance,
+  formatRowAmount,
+  formatSatang,
+  isCounted,
+  periodTotals,
+  toSatang,
+} from "./money.ts";
 import type { MoneyRow } from "./money.ts";
 
 const A = "acc-a";
@@ -115,4 +122,40 @@ test("ยอดคงเหลือตรงเป๊ะทีละตัว�
   assert.equal(accountBalance(ROWS, A), 110_000);
   assert.equal(accountBalance(ROWS, B), 100_000);
   assert.equal(accountBalance(ROWS, A, 1_000) + accountBalance(ROWS, B), 211_000);
+});
+
+/* ---- เคสที่ verifier เจอ: เงินเป็น string แล้วต่อกันเงียบ ๆ (ยอดผิดแต่ไม่มี error) ---- */
+
+test("amount เป็น string ต้อง throw ไม่ใช่ต่อสตริงเงียบ ๆ", () => {
+  const strRows = [
+    { kind: "income", amount: "2450000", accountId: A, deletedAt: null },
+    { kind: "expense", amount: "1284000", accountId: A, deletedAt: null },
+  ] as unknown as MoneyRow[];
+  // เดิม: initial 100 + '2450000' + '1284000' → คืน "1,001,166,000" (ผิดเงียบ ๆ) ตอนนี้ต้องล้ม
+  assert.throws(() => accountBalance(strRows, A, 100), TypeError);
+  assert.throws(() => periodTotals(strRows), TypeError);
+  assert.throws(() => toSatang("2450000"), TypeError);
+  assert.throws(() => toSatang("0"), TypeError); // แม้สตริงที่ดูเหมือนศูนย์ก็ต้องไม่ผ่าน
+});
+
+test("amount เป็น BigInt (หรือค่าที่ไม่ใช่ number) ต้อง throw", () => {
+  assert.throws(() => toSatang(BigInt(1)), TypeError);
+  assert.throws(() => toSatang(null), TypeError);
+  const bigRows = [
+    { kind: "income", amount: BigInt(1), accountId: A, deletedAt: null },
+  ] as unknown as MoneyRow[];
+  assert.throws(() => accountBalance(bigRows, A), TypeError);
+  assert.throws(() => periodTotals(bigRows), TypeError);
+  // ค่าที่ถูกต้องยังได้ยอดตรงเป๊ะ: 100 + 2450000 − 1284000 = 1166100
+  assert.equal(
+    accountBalance(
+      [
+        { kind: "income", amount: 2_450_000, accountId: A, deletedAt: null },
+        { kind: "expense", amount: 1_284_000, accountId: A, deletedAt: null },
+      ],
+      A,
+      100,
+    ),
+    1_166_100,
+  );
 });

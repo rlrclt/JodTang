@@ -42,6 +42,23 @@ export type Totals = {
   balance: number;
 };
 
+/**
+ * ด่านเดียวของ "จำนวนเงิน" ทุกค่าที่เข้าฟังก์ชันในไฟล์นี้
+ * บังคับ: ต้องเป็น number (ไม่ใช่ string/BigInt) และเป็นสตางค์จำนวนเต็มในช่วง safe integer
+ *
+ * ทำไมต้องมี: ถ้ารับ string มา บวกจะ "ต่อสตริง" เงียบ ๆ เช่น initial 100 + '2450000' + '1284000'
+ * เคยคืน 1,001,166,000 แทน 1,166,100 (ยอดผิดแต่ไม่มี error — เส้นทางเงียบที่แย่ที่สุดสำหรับเงิน)
+ * ค่าที่ไม่ผ่านต้องล้มเสียงดัง ไม่ใช่คืนยอดเพี้ยน
+ */
+export function toSatang(value: unknown, label = 'จำนวนเงิน'): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new TypeError(
+      `${label}ต้องเป็น number สตางค์จำนวนเต็มในช่วง safe integer (ได้ ${typeof value}: ${String(value)})`,
+    );
+  }
+  return value;
+}
+
 /** แถวนี้ถูกนับเป็นยอด "รับ/จ่าย" ไหม — ที่เดียวที่ตัดสินกติกานี้ */
 export function isCounted(row: MoneyRow): boolean {
   return row.deletedAt == null && (row.kind === "income" || row.kind === "expense");
@@ -56,8 +73,9 @@ export function periodTotals(rows: readonly MoneyRow[]): Totals {
   let expense = 0;
   for (const row of rows) {
     if (!isCounted(row)) continue;
-    if (row.kind === "income") income += row.amount;
-    else expense += row.amount;
+    const amount = toSatang(row.amount, "amount ของแถว"); // ตรวจ input ก่อนบวก ไม่ใช่ตรวจยอดหลังรวม
+    if (row.kind === "income") income += amount;
+    else expense += amount;
   }
   if (!Number.isSafeInteger(income) || !Number.isSafeInteger(expense)) {
     throw new RangeError(
@@ -73,20 +91,18 @@ export function accountBalance(
   accountId: string,
   initialBalance = 0,
 ): number {
-  if (!Number.isSafeInteger(initialBalance)) {
-    throw new TypeError(`ยอดตั้งต้นต้องเป็นสตางค์จำนวนเต็มในช่วง safe integer (ได้ ${initialBalance})`);
-  }
-  let sum = initialBalance;
+  let sum = toSatang(initialBalance, "ยอดตั้งต้น");
   for (const row of rows) {
     if (row.deletedAt != null) continue;
+    const amount = toSatang(row.amount, "amount ของแถว"); // กันเงินเป็นสตริงแล้วต่อกันเงียบ ๆ
     if (row.kind === "income") {
-      if (row.accountId === accountId) sum += row.amount;
+      if (row.accountId === accountId) sum += amount;
     } else if (row.kind === "expense") {
-      if (row.accountId === accountId) sum -= row.amount;
+      if (row.accountId === accountId) sum -= amount;
     } else if (row.kind === "transfer") {
       // kind ที่ไม่รู้จักต้องไม่ถูกหักเงินราวกับเป็น transfer (fail-open เดิม)
-      if (row.accountId === accountId) sum -= row.amount;
-      if (row.toAccountId === accountId) sum += row.amount;
+      if (row.accountId === accountId) sum -= amount;
+      if (row.toAccountId === accountId) sum += amount;
     }
   }
   if (!Number.isSafeInteger(sum)) {
@@ -107,10 +123,7 @@ const THB_SIGNED = new Intl.NumberFormat("th-TH", {
  * นี่คือที่เดียวที่หาร 100 — ห้ามหาร 100 กระจายในโค้ดอื่น (design.md §1.2)
  */
 export function formatSatang(satang: number, opts: { signed?: boolean } = {}): string {
-  if (!Number.isSafeInteger(satang)) {
-    throw new TypeError(`จำนวนเงินต้องเป็นสตางค์จำนวนเต็มในช่วง safe integer (ได้ ${satang})`);
-  }
-  return (opts.signed ? THB_SIGNED : THB).format(satang / 100);
+  return (opts.signed ? THB_SIGNED : THB).format(toSatang(satang) / 100);
 }
 
 /**
