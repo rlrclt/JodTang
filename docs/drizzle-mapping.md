@@ -18,7 +18,14 @@
 | partial unique index (`where archived_at is null` + `lower(btrim(name))`) | `uniqueIndex('...').on(t.userId, sql\`lower(btrim(${t.name}))\`).where(sql\`archived_at is null\`)` | ออกมาเป็น `CREATE UNIQUE INDEX ... WHERE archived_at is null` ตรง |
 | index เรียงย้อนหลัง (หน้าแรก) | `index('...').on(t.userId, t.occurredAt.desc(), t.id.desc()).where(sql\`deleted_at is null\`)` | ได้ `DESC NULLS LAST` (ดูข้อ 3) |
 
-## 2) สิ่งที่ drizzle ทำไม่ได้ (1 อย่าง) — ต้องเติมด้วย SQL มือ
+## 2) สิ่งที่ drizzle ทำไม่ได้ — ต้องเติมด้วย SQL มือ (2 เรื่อง)
+
+### 2.1 trigger + function `jodjai_touch_updated_at` (พิสูจน์ด้วย harness ข้อ 4)
+drizzle-kit ไม่รู้จัก trigger และ function เลย — `schema.ts` เขียนไม่ได้ และ `generate` จะไม่ออกมาให้ทั้ง 4 trigger + ฟังก์ชัน `jodjai_touch_updated_at()`
+ผลถ้าไม่เติม: `updated_at` จะไม่ถูกอัปเดตเองอีกต่อไป (แถวที่แก้จะยังโชว์เวลาเดิม — บั๊กเงียบที่หาสาเหตุยากเพราะไม่มี error)
+วิธีทำ: ก๊อปบล็อก `create or replace function ... $$;` + `create trigger ... 4 บรรทัด` จาก `docs/schema.sql` ต่อท้ายไฟล์ migration
+
+### 2.2 index ที่มี INCLUDE
 
 **`index(...).include(...)` ไม่มีใน drizzle-orm 0.45.2**
 รันแล้วได้: `TypeError: (0, import_pg_core.index)(...).on(...).include is not a function` (drizzle-kit อ่าน schema.ts ไม่ผ่าน = generate ล้มทั้งรอบ)
@@ -52,6 +59,19 @@ create index transactions_user_category_time_idx on transactions (user_id, categ
 | comment ในไฟล์ SQL | migration ไม่มี comment อะไรเลย | เราใช้ `--` inline ไม่ได้ใช้ `COMMENT ON` จึงไม่มีข้อมูลหาย |
 
 ## 4) acceptance ที่เชื่อได้จริง (ใช้แทนการ "diff ข้อความ SQL")
+
+**เครื่องมือพร้อมแล้ว: `/tmp/sqlcheck/catalog_diff.mjs`** (เขียนโดย architect · พิสูจน์ตัวเองด้วย `--selftest` แล้ว)
+
+```bash
+cd /tmp/sqlcheck
+node catalog_diff.mjs --selftest /home/yoru/projects/jodjai/docs/schema.sql   # ต้องขึ้น "selftest ผ่าน — ตัวเทียบเชื่อได้"
+node catalog_diff.mjs /home/yoru/projects/jodjai/docs/schema.sql /home/yoru/projects/jodjai/migrations   # งานจริง
+```
+
+เทียบ 5 ชั้นโดย apply ของจริงลง Postgres 2 ตัว (PGlite): ตาราง/คอลัมน์ (ชนิด, not null, default, generated) · constraint (primary/unique/foreign/check) · index (คอลัมน์, INCLUDE, predicate, unique) · trigger · function
+ผ่านเมื่อ exit 0 และขึ้น `catalog ตรงกันทั้งหมด` · รายการที่ต่างจะถูกพิมพ์พร้อมเหตุผลว่าขาดใน B หรือเกินใน B
+`--selftest` พิสูจน์ว่าเครื่องมือจับของที่หายได้จริง: ตัด `include` 3 ตัว + trigger 4 ตัวออกจากสำเนาแล้วต้องรายงานครบ 3+4 และชั้นอื่นไม่ต่าง (ผลรันล่าสุด: ผ่าน)
+หมายเหตุ: `migrations` ในคำสั่งคือ path ของ `out` ใน `drizzle.config.ts` — แก้ path ให้ตรงของจริงได้เลย
 
 การเทียบข้อความ SQL ไม่มีคุณค่า (ชื่อ/ลำดับต่างกันทันที) ให้เทียบ **catalog ของ DB 2 ตัว**:
 
