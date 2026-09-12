@@ -41,6 +41,8 @@ export function categoryOf(id: string | null | undefined): Category | undefined 
 }
 
 export type FixtureTxn = MoneyRow & {
+  /** id ของแถว — React ต้องใช้เป็น key (ของจริงคือ transactions.id uuid) */
+  id: string;
   /** ป้ายวันที่สั้น ๆ ที่แสดงในแถว (ของจริง format จาก occurred_at ตาม timezone ผู้ใช้) */
   dateLabel: string;
 };
