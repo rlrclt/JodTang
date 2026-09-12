@@ -162,3 +162,73 @@ DB กันไว้ทั้ง 3 กรณีแล้ว (`transactions_shap
 - ไม่ได้รัน `next build` / `eslint` (โปรเจกต์ยังไม่มี `node_modules` — ไม่ใช่ของ commit นี้)
 - ไม่ได้ทดสอบกับข้อมูลจาก DB จริง: การแปลง `bigint → number` ที่ชั้น drizzle (เฟส 2) ยังไม่มีโค้ด
   ถ้าชั้นนั้นส่ง string เข้ามา ระบบจะ throw ทันที (fail-loud) ไม่ใช่เพี้ยนเงียบ — ยืนยันได้ตอนมี query layer
+
+---
+
+# รอบ 2 — ตรวจการแก้ 5 จุด (commit `7cd6f84`)
+
+revision ที่ตรวจ: `src/lib/money.ts` md5 **0aff4c77f866cc15710626a010ef9c30** ·
+`src/lib/money.test.ts` md5 **69f3895aa0d67c01907393bba7bfb09f**
+→ md5 ตรงกับ blob ใน commit `7cd6f84` และตรง working tree · baseline รอบ 1 = `e8e4f5b`
+
+## diff `e8e4f5b..7cd6f84` เฉพาะ `src/lib/` — ตรง 5 จุดที่สั่ง ไม่มีอย่างอื่น
+(ช่วงนี้มี 6 commit — ดูข้อ "แก้ข้อเท็จจริง" ท้ายหัวข้อรอบ 2 · สองไฟล์ใน `src/lib/` มาจาก `7cd6f84` เท่านั้น)
+
+| จุดที่สั่ง | diff ที่ได้จริง |
+|---|---|
+| 1. `isSafeInteger` 3 จุด | `periodTotals` guard ก่อน return (`RangeError`) · `accountBalance` guard ยอดสุดท้าย + **ตรวจ `initialBalance` ต้นทาง** (`TypeError`) · `formatSatang` `isInteger` → `isSafeInteger` |
+| 2. `deletedAt == null` | ทั้ง `isCounted` และ `accountBalance` (`if (row.deletedAt != null) continue;`) |
+| 3. `else if (row.kind === "transfer")` | เปลี่ยนแล้ว พร้อมคอมเมนต์กำกับว่าปิด fail-open เดิม |
+| 4. คอมเมนต์ `user_id` | หัวไฟล์ขึ้น ⚠ ชัดเจน: ไฟล์นี้บังคับ `deleted_at`/`kind` ได้ แต่ **บังคับ `user_id` ไม่ได้** — ทุก query ต้องมี `user_id = <session user>` และบรรทัดท้ายอัปเดตเป็น `inArray + isNull(deletedAt) + eq(userId, …)` |
+| 5. เทสต์ 4 เคส | +60 บรรทัด: ยอดรวมเกิน 2^53 throw · `formatSatang(1e16)`+`initialBalance` เศษ/เกิน throw · fail-open 3 แบบปิดแล้ว · ยอดคงเหลือ assert เลขตรง (111000/110000/100000/211000) |
+
+อย่างอื่นในไฟล์ไม่ถูกแตะ (ยังไม่มี import ภายนอก · `MONEY_KINDS` / ตัว `Intl.NumberFormat` / โครงฟังก์ชันเดิม)
+
+## ผลรันจริง
+
+```
+node --test src/lib/money.test.ts   →  tests 9 · pass 9 · fail 0   (ตรงกับที่ coder รายงาน)
+tsc -p .  (replica tsconfig + typescript@5 + @types/node@20)       →  0 error
+node /tmp/pgtest/mutate2.mjs        →  จับได้ 11/11
+```
+
+**mutation ชุดเดิม 6 แบบ (ต้องยังถูกจับหลังแก้):** M1 ไม่กรอง `deletedAt` ใน `accountBalance` ✓ ·
+M2 `isCounted` ไม่กรอง deletedAt ✓ · M3 นับ transfer เป็นรับ/จ่าย ✓ · M4 transfer กลับด้าน ✓ ·
+M5 `formatSatang` ไม่หาร 100 ✓ · M6 income/expense กลับด้าน ✓
+
+**ถอด fix รอบ 2 ออกทีละจุด (พิสูจน์ว่าเทสต์ใหม่มีฟัน ไม่ได้ผ่านเพราะไม่ตรวจ):**
+
+| ถอด fix | ผล |
+|---|---|
+| R1 `formatSatang` `isSafeInteger` → `isInteger` | จับได้ — "formatSatang(1e16) และ initialBalance เพี้ยน ต้อง throw" fail |
+| R2 guard ยอดรวม `periodTotals` → `isInteger` | จับได้ — "ยอดรวมหลุดช่วง safe integer ต้อง throw" fail |
+| R3 guard `accountBalance` + `initialBalance` → `isInteger` | จับได้ (fail 2) |
+| R4 `deletedAt != null` → `!deletedAt` (fail-open กลับมา) | จับได้ — เทสต์ fail-open fail |
+| R5 `else if (transfer)` → `else` (fail-open กลับมา) | จับได้ — เทสต์ fail-open fail |
+
+= **11/11** ไม่มีเทสต์ไหนผ่านโดยไม่ได้ตรวจอะไร
+
+## ข้อสังเกตเพิ่มเติม (ไม่ใช่ข้อที่ไม่ผ่าน · ไม่มี action)
+
+- เทสต์ยิง `kind: "refund"` ผ่าน `as unknown as MoneyRow` — ถูกต้องแล้ว เพราะ `transactions_shape_ck`
+  กัน kind นอก 3 ค่าไว้ การทดสอบ fail-open ต้องยิงค่าที่ type ปฏิเสธ ไม่งั้นจะไม่ครอบเคสจริง
+- การเลือก error class: `RangeError` สำหรับยอดหลุดช่วง · `TypeError` สำหรับพารามิเตอร์ผิดรูป — เทสต์ผูกคลาสไว้แล้ว ✓
+- **บันทึกไว้เฉย ๆ (ไม่ต้องแก้):** guard ตรวจ "ยอดสุดท้าย" ไม่ได้ตรวจทุก intermediate → ถ้ามีรายการขนาด ~1e15 สตางค์
+  ที่ดันยอดกลางทางเกิน 2^53 แล้วยอดสุดท้ายกลับมาอยู่ในช่วง จะยังหลุดได้ (DB ยอมรับขนาดนั้น แต่ผู้ใช้ทำไม่ได้)
+  ทางแก้คือ guard ทุกครั้งที่บวก ซึ่งเกินความจำเป็นของ v1 — ไม่ต้องทำ
+- transfer ที่ `toAccountId = null` ยังหักฝั่งต้นทาง (เงินหายฝั่งเดียว) = พฤติกรรมที่ตั้งใจ มี DB constraint กันไว้ และเทสต์เขียนกำกับแล้ว ✓
+
+## สถานะรอบ 2: ผ่านครบ 5 จุด · ไม่มี blocker · ข้อที่ไม่ผ่าน: ไม่มี
+
+ไฟล์ที่แตะในงานนี้ = 2 ไฟล์ (`src/lib/money.ts`, `src/lib/money.test.ts`)
+· **ยืนยันด้วย `git show --stat 7cd6f84`** → `src/lib/money.test.ts +60` · `src/lib/money.ts +26 −7` = **2 ไฟล์ 86 insertions 7 deletions**
+  ไม่มีไฟล์ `docs/` ปนมาใน commit นี้
+· **แก้ข้อเท็จจริง:** ที่เขียนไว้ก่อนหน้านี้ว่า "commit `7cd6f84` มีไฟล์ `docs/` ปนมาด้วย" **ผิด** — เกิดจากการอ่าน
+  `git diff --stat e8e4f5b..7cd6f84` ซึ่งเป็น diff **สะสมของ 6 commit** ไม่ใช่ของ commit เดียว:
+  `2d3a81f` drizzle-mapping · `730e79d` SETUP · `a7787fc` money-review รอบ 1 · `ab95b47` catalog_diff harness ·
+  `d9c1258` report 6.2 · `7cd6f84` money fix (ไฟล์ SETUP.md/drizzle-mapping/money-review/reports/tools มาจาก 5 commit แรก)
+  → 2 ไฟล์เงินในคอมมิต `7cd6f84` ยังเป็น 2 ไฟล์ตามที่สรุป ไม่มีอะไรเปลี่ยนในผลตรวจ
+· บทเรียนสำหรับรอบถัดไป: คำถามว่า "commit เดียวแตะไฟล์อะไร" ต้องใช้ `git show --stat <sha>` / `git show --name-only <sha>`;
+  `git diff A..B` ตอบได้แค่ "ระหว่างสองจุดนั้นเปลี่ยนอะไร" (มี commit กลางทางปนได้เสมอ)
+
+คำสั่งรันซ้ำ: `node --test src/lib/money.test.ts` · `node /tmp/pgtest/mutate2.mjs` · `cd /tmp/tscheck && ./node_modules/.bin/tsc -p .`
