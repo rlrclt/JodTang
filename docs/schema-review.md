@@ -456,3 +456,47 @@ v2 เปลี่ยนสไตล์ query ของหน้าสรุป�
   · minor 5.1/5.2/5.3 (ชั้นแอป: validate กระเป๋า archive, ดัก 23505 ตอนกู้คืน, client ส่ง uuid กันส่งซ้ำ) · minor 6.2 (`npx @better-auth/cli generate` ตอนเฟส 1)
 - **ใหม่จากรอบ 2:** minor 7.1 (include ให้ month index) · minor 7.2 (เลขข้อใน changelog) · note 7.3 (drizzle/generated column)
 - คำสั่งรันซ้ำ: `cd /tmp/pgtest && node probe5.mjs` (ผลตรวจ 7 ข้อ + regression) · `node probe6.mjs` (ตัวเลข index-only) · `node catalog.mjs` (โครง schema)
+
+---
+
+# รอบ 3 — ตรวจการแก้ minor 7.1 + 7.2 (เฉพาะ 2 จุด · ไม่เปิดประเด็นใหม่)
+
+revision: 313 บรรทัด · `md5 0448beb00905f6c3d653ffa7a375c0ca` (v2 = 306 บรรทัด · `md5 3473a198…`)
+
+**สถานะ git:** HEAD ยังเป็น `6f368ea` และการแก้ทั้ง 2 จุดอยู่ใน working tree (ยังไม่ commit)
+→ diff ที่ตรวจคือ `git diff` (working tree เทียบ `6f368ea`) ไม่ใช่ commit range `6f368ea..HEAD` ซึ่งว่างอยู่
+· `docs/design.md` ก็ถูกแก้ใน working tree ด้วย แต่ไม่ใช่งานรอบนี้ — ถ้าจะ commit ควรแยก commit
+เพื่อให้ diff ทุกรอบอ่านง่าย (ข้อเสนอเกี่ยวกับ workflow ไม่ใช่ข้อบกพร่องของ schema)
+
+## ผลต่างที่ตรวจ — 2 hunk เท่านั้น (+13 −6 บรรทัด)
+
+| hunk | เปลี่ยนอะไร |
+|---|---|
+| `@@ -215,9 +215,14 @@` | `transactions_user_month_idx` + `include (amount, kind)` + คอมเมนต์อธิบาย 4 บรรทัด |
+| `@@ -287,13 +292,15 @@` | changelog เลขข้อ 4 จุด + เพิ่มบรรทัด minor 7.1 |
+
+ไม่มีอะไรอื่น · DDL ส่วนอื่น คอลัมน์ constraint trigger index ตัวอื่น เหมือน v2 ทุกตัว
+
+## minor 7.1 — ผ่าน
+
+- apply ไฟล์ที่แก้ → `APPLIED OK`
+- index ที่สร้างจริงใน DB: `transactions_user_month_idx (user_id, occurred_month_bkk) INCLUDE (amount, kind) WHERE (deleted_at IS NULL)` ✓
+- ยอดเดือนนี้แยก kind → **`Index Only Scan using transactions_user_month_idx` · Heap Fetches 0** · buffers 4 · 1.29 ms
+  (ก่อนแก้: `Index Scan` บน `kind_time_idx` · buffers 9 · 1.50 ms) · ผลลัพธ์ถูกต้อง (expense 150000 = 300×500 · income 200000 = 2×100000)
+- แนวโน้ม 6 เดือน → **`Index Only Scan` · Heap Fetches 0** · buffers 4 · 0.65 ms (ก่อนแก้: `Index Scan` · buffers 8)
+- **Heap Fetches 0 ยืนยันแล้วทั้งสอง query** ตามที่สั่ง (สคริปต์ `probe7.mjs`, md5 ของไฟล์คงที่ระหว่างรัน)
+- โน้ตความแม่นยำของคอมเมนต์ (ไม่ต้องแก้): คอมเมนต์เขียน "buffers 1 เทียบกับ 9 เดิม" — เลข 1 มาจากการวัดรอบ 2
+  (ตอนนั้น index สร้างใหม่และตัด `kind_time_idx` ออก) วันนี้วัดซ้ำได้ buffers 4
+  · ข้อที่เป็นสาระ (Index Only Scan + Heap Fetches 0) จริงทั้งสองครั้ง
+- คอมเมนต์ที่ว่า "ไม่ตัด `transactions_user_kind_time_idx` ในรอบนี้ รอวัดหน้าจริง" ตรงกับข้อเสนอเดิม ✓
+
+## minor 7.2 — ผ่าน
+
+`major 2.x` → **major 1.1** · `minor 1.1` → **minor 1.2** · `minor 1.2` → **minor 1.3**
+· `minor 4.3` แยกเป็น **minor 4.3** (btrim name) + **minor 4.5** (คอมเมนต์ "ลำดับ" ของ composite FK)
+· เพิ่มบรรทัด **minor 7.1** → ตอนนี้ตรงกับหัวข้อ 1–6 ของเอกสารนี้ครบทุกบรรทัด
+
+## สถานะหลังรอบ 3
+
+ผ่านทั้ง 2 จุด · ไม่มีประเด็นใหม่ · ค้างตามที่ตกลงเหมือนเดิม: minor 4.2 · 4.4 · 5.1–5.3 · 6.2 (และ 7.3 เป็นโน้ตเฟส 1)
+คำสั่งรันซ้ำ: `cd /tmp/pgtest && node probe7.mjs`
