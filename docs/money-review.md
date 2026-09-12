@@ -298,3 +298,91 @@ revision ที่ยังไม่ผ่านรีวิวรอบ 3: `src
 (ค) มีคนแตะกติกาเงิน 3 ข้อ (transfer สองฝั่ง / soft delete / ทิศทางมาจาก kind)
 
 สถานะเอกสาร: commit `1bb8c0e` เก็บเนื้อหาทั้งหมดของเอกสารนี้แล้ว
+
+---
+
+# รอบ 3 — เฉพาะ `expenseByCategory` (งานสั้น · ไม่ตรวจเรื่องอื่น)
+
+revision ที่ตรวจ: `src/lib/money.ts` md5 `214e76ea6aab7bf4f98ffa27a6ac7855` ·
+`src/lib/money.test.ts` md5 `a42b8cd1cdf9c45c9839da34582721d2` (commit `7c161dc`)
+· md5 ตรงกับ `git show HEAD:` ทั้งสองไฟล์ · ตรวจเฉพาะฟังก์ชันใหม่ + เทสต์ของมันเท่านั้น
+
+## คำสั่งที่รันจริง
+
+```
+node --test src/lib/money.test.ts        → tests 12 · pass 12 · fail 0
+node /tmp/pgtest/mutate3.mjs             → mutation เฉพาะฟังก์ชันนี้: จับได้ 3/5 (+1 control)
+node /tmp/pgtest/eb.mjs                  → พฤติกรรมตามรูปแถว (ข้อ 2) + ตัวเลข guard (ข้อ 1)
+```
+
+## (1) ใช้กติกาเดียวกับ `periodTotals` จริงไหม — ผ่าน
+
+| กติกา | ในโค้ด (L95–109) | หลักฐาน |
+|---|---|---|
+| ไม่นับ transfer | `if (!isCounted(row) \|\| row.kind !== "expense") continue;` | mutation X2 (ถอดเงื่อนไข kind) → เทสต์ fail ✓ |
+| ไม่นับ `deletedAt != null` | ผ่าน `isCounted` ตัวเดียวกับ periodTotals | mutation X1 (ถอด isCounted) → เทสต์ fail ✓ |
+| ตรวจ `toSatang` ก่อนบวก | `+ toSatang(row.amount, "amount ของแถว")` | โค้ด + probe: amount เป็นสตริง → `TypeError` ✓ |
+| guard safe integer | ตรวจ `next` **รายหมวด** ก่อน `set()` (L103) | โค้ด |
+| เทสต์ผูก invariant กับ periodTotals | `[...byCat.values()].reduce(...) === periodTotals(rows).expense` | เทสต์บรรทัด 141 ✓ |
+
+ข้อสังเกตเดียว (informational · ไม่ต้องแก้): guard เป็น **รายหมวด** ไม่ได้ guard "ผลรวมของทั้ง Map"
+ถ้าหน้าจอจะบวกค่าใน Map เองเพื่อหาฐาน 100% เส้นนั้นไม่มี guard — วัดแล้ว: 3 หมวด × 4 แถว × (1e15−1) ต่อแถว
+→ คืน Map ที่แต่ละหมวด `3999999999999996` (ปลอดภัย) แต่ผลรวม `11999999999999988` เกิน 2^53 โดยไม่ throw
+ขณะที่ `periodTotals` ชุดเดียวกัน throw `RangeError` · ต้องมีรายการขนาด ~1e13 บาท/แถว 12 แถวจึงจะถึง
+(ผู้ใช้ทำไม่ได้) — ถ้าหน้าสรุปต้องการตัวหาร ใช้ `periodTotals(rows).expense` แทนการบวกเอง
+
+## (2) throw เมื่อรายจ่ายไม่มี `categoryId` — เหมาะแล้ว ไม่ควรข้ามเงียบ
+
+- ฝั่ง DB เป็นไปไม่ได้อยู่แล้ว: `transactions_shape_ck` บังคับ `category_id is not null` ให้ทุก kind ที่ไม่ใช่ transfer
+  → ค่า `null` ที่มาถึง JS = mapping/query ผิด หรือแถวที่สร้างเองในแอป (optimistic UI) — ต้องรู้ตัว ไม่ใช่กลืน
+- ข้ามเงียบจะทำให้กราฟสรุป **หายไปหนึ่งชิ้นโดยยอดยังดูสมเหตุสมผล** (ตัวหาร/เปอร์เซ็นต์เพี้ยนแต่หน้าจอปกติ)
+  = อาการที่แย่ที่สุดของเงิน และขัดกับหลักของไฟล์นี้เอง ("ค่าที่ไม่ผ่านต้องล้มเสียงดัง")
+- วัดจริง: แถว junk ที่ **ลบแล้วและไม่มีหมวด** → ไม่ throw (ถูกข้ามด้วย `isCounted` ก่อนถึงด่านหมวด → หน้าเว็บไม่พังจากขยะ)
+  · transfer ที่มี `categoryId` (DB ห้าม) → ไม่ throw ✓ · `categoryId = ''` → throw (fail-closed เหมือนเคส `deletedAt = ''`) ✓
+- ระดับ error: โค้ด throw `Error` เปล่า ขณะที่ที่เหลือในไฟล์ใช้ `TypeError`/`RangeError` — ไม่ผิด แต่เทสต์ควรผูกให้แคบกว่านี้ (ดูข้อ 3)
+
+## (3) เทสต์ 12 เคสครอบพอไหม — ไม่ผ่าน (minor): 2 branch ของฟังก์ชันนี้ยังไม่มีเทสต์
+
+เทสต์ของ `expenseByCategory` มี 1 เคส / 5 assert (บรรทัด 128–147) และผูก invariant กับ `periodTotals` ได้ดี
+แต่ mutation เฉพาะฟังก์ชันนี้ชี้ว่ามี branch ที่ไม่มีเทสต์เลย:
+
+| mutation | ผล |
+|---|---|
+| X1 ถอดการกรอง soft delete | จับได้ ✓ |
+| X2 นับ transfer เข้ายอดด้วย | จับได้ ✓ |
+| X3 รายจ่ายไม่มีหมวด → ข้ามเงียบ | จับได้ ✓ (assert.throws ทำงาน) |
+| X4 ถอด `toSatang` ก่อนบวก (รับสตริงได้) | **ไม่มีเทสต์จับ** ❌ |
+| X5 ถอด guard safe integer รายหมวด | **ไม่มีเทสต์จับ** ❌ |
+| X6 control: mutation ที่ไม่เปลี่ยนพฤติกรรม (`void next`) | ไม่ถูกจับ ✓ = ชุดเทสต์ไม่ได้ fail มั่ว |
+
+ข้อเสนอ (เพิ่มเทสต์ 3 assert — **ไม่ต้องแก้ `money.ts`**):
+
+```ts
+// 1) สตริงต้องไม่ผ่านด่านของฟังก์ชันนี้
+assert.throws(
+  () => expenseByCategory([{ kind: "expense", amount: "350", accountId: A, categoryId: "food" } as unknown as MoneyRow]),
+  TypeError,
+);
+// 2) ยอดหมวดหลุด safe integer ต้อง throw (2 แถว × 1e15 > 2^53)
+assert.throws(
+  () => expenseByCategory([
+    { kind: "expense", amount: 1_000_000_000_000_000, accountId: A, categoryId: "food" },
+    { kind: "expense", amount: 1_000_000_000_000_000, accountId: A, categoryId: "food" },
+  ] as unknown as MoneyRow[]),
+  RangeError,
+);
+// 3) เคส "ไม่มีหมวด" ให้ผูกกับคลาส/ข้อความ ไม่ใช่ Error เปล่า ๆ
+//    (ตอนนี้ TypeError จาก toSatang ก็ผ่าน assert.throws(..., Error) ได้ = แยกสาเหตุไม่ได้)
+```
+
+## (4) ควรอยู่ใน `money.ts` หรือชั้นอื่น — ควรอยู่ที่เดิม
+
+- เป็น pure aggregation บนแถวที่ผู้เรียกดึงมาแล้ว และใช้ `isCounted`/`toSatang` ตัวเดียวกับกติกากลาง
+  ถ้าย้ายออกจะต้อง import `money.ts` อยู่ดี หรือแย่กว่านั้นคือเขียนกติกา (transfer / soft delete / ตรวจสตริง) ซ้ำ = จุดที่สองที่ต้องตามแก้
+- ทางเลือกที่ชอบธรรมสำหรับอนาคต: หน้าสรุปจริงอาจทำ `group by category_id, sum(amount)` ที่ SQL
+  (DB บวกเป็น `numeric` เป๊ะกว่า และอ่านข้อมูลน้อยกว่า) — **ตัดสินตอนมี query layer + วัดข้อมูลจริง** ไม่ใช่ตอนนี้
+- บันทึกไว้แล้วว่าข้อจำกัด "ไฟล์นี้ไม่บังคับ `user_id`" ใช้กับฟังก์ชันนี้ด้วย (แถวต้องมาจาก query ที่กรองผู้ใช้แล้ว)
+
+## สถานะรอบ 3: ผ่าน 3/4 ข้อ · ข้อที่ไม่ผ่าน = ข้อ 3 (เทสต์ 2 branch + assert กว้างเกิน)
+
+ไม่ต้องแก้ `money.ts` · ไม่ตรวจเรื่องอื่นตามคำสั่ง (build error ที่ `TransactionRow` ไม่ใช่ขอบเขตของหัวข้อนี้)
