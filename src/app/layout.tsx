@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Sans_Thai } from 'next/font/google';
 
+import { AddEntryFab } from '@/components/AddEntrySheet';
 import { TabBar } from '@/components/TabBar';
 
 import './globals.css';
@@ -82,6 +83,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto w-full max-w-[430px] px-4 pt-[calc(16px+env(safe-area-inset-top))] pb-[calc(var(--tab-h)+72px+env(safe-area-inset-bottom))]">
           {children}
         </main>
+        <AddEntryFab />
         <TabBar />
       </body>
     </html>

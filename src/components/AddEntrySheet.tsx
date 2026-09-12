@@ -1,0 +1,178 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
+import { SUGGESTED_CATEGORY_ID, categoryOf } from '@/lib/fixtures';
+
+const KINDS = [
+  { id: 'income', label: 'รับ' },
+  { id: 'expense', label: 'จ่าย' },
+  { id: 'transfer', label: 'โอน' },
+] as const;
+
+type Kind = (typeof KINDS)[number]['id'];
+
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const;
+const QUICK = ['20', '50', '100', '500'] as const;
+
+/**
+ * S3 เพิ่มรายการเร็ว (design.md §4 S3 + §2)
+ * - ใช้ <dialog> + showModal(): ได้ focus trap · Esc · ::backdrop ฟรี ไม่ต้องดึงไลบรารี
+ * - คีย์แพดของแอปเอง (≥56px) เป็น layer เสริม · ช่องจำนวนเงินยังเป็น <input> จริง (screen reader/คีย์บอร์ดระบบใช้ได้)
+ * - ค่าเริ่มต้น = จ่าย (สัดส่วนใช้งานจริงสูงกว่า — §3)
+ * - ยังไม่บันทึกจริง: เฟส 2 จะยิง optimistic + client_id (idempotency) แล้วปิด sheet
+ */
+export function AddEntryFab() {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const [kind, setKind] = useState<Kind>('expense');
+  const [amount, setAmount] = useState('');
+
+  const open = () => {
+    dialogRef.current?.showModal();
+    // §2: เปิดแล้ว focus ไปที่ช่องจำนวนเงิน
+    queueMicrotask(() => amountRef.current?.focus());
+  };
+
+  // เปิด sheet ตรง ๆ ด้วย ?add=1 (ใช้ถ่ายสกรีนช็อต/ทดสอบโดยไม่ต้องคลิก)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('add') === '1') open();
+  }, []);
+
+  const press = (key: string) => {
+    setAmount((value) => {
+      if (key === 'back') return value.slice(0, -1);
+      if (key === '.') return value.includes('.') ? value : value === '' ? '0.' : `${value}.`;
+      if (/\.\d\d$/.test(value)) return value; // ทศนิยมครบ 2 ตำแหน่งแล้ว
+      if (value.replace('.', '').length >= 10) return value; // เพดานหลัก (กันค่าที่เกิน 1e15 สตางค์)
+      return value === '0' ? key : value + key;
+    });
+  };
+
+  const empty = amount === '' || Number(amount) === 0;
+  const suggested = categoryOf(SUGGESTED_CATEGORY_ID);
+  const canSave = !empty && kind !== 'transfer'; // โอนต้องเลือกปลายทางก่อน — เฟส 2
+
+  return (
+    <>
+      {/* FAB: ห่างขอบขวา 16 · เหนือแถบแท็บ 16 (design §2, z-index 30 §1.6) */}
+      <button
+        type="button"
+        onClick={open}
+        aria-label="เพิ่มรายการ"
+        className="fixed bottom-[calc(56px+16px+env(safe-area-inset-bottom))] right-[max(16px,calc(50%-215px+16px))] z-30 flex size-14 items-center justify-center rounded-card bg-[var(--balance)] text-[var(--on-accent)] shadow-[var(--shadow-sticky)] active:scale-[0.98]"
+      >
+        <svg className="size-6" aria-hidden="true">
+          <use href="#i-plus" />
+        </svg>
+      </button>
+
+      <dialog
+        ref={dialogRef}
+        aria-label="เพิ่มรายการ"
+        className="m-0 w-full max-w-[430px] rounded-t-[20px] border-0 bg-surface p-4 pb-[calc(16px+env(safe-area-inset-bottom))] text-text shadow-[var(--shadow-sheet)] backdrop:bg-[rgb(2_6_23_/_0.45)] sm:mx-auto"
+      >
+        <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-[999px] bg-[var(--border-strong)]" />
+
+        <div className="flex flex-wrap gap-2" role="group" aria-label="ประเภทรายการ">
+          {KINDS.map((item) => {
+            const active = kind === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setKind(item.id)}
+                className={`min-h-11 rounded-btn border px-4 font-semibold ${
+                  active
+                    ? `border-[var(--border-strong)] bg-surface-2 font-bold ${
+                        item.id === 'income' ? 'text-income' : item.id === 'expense' ? 'text-expense' : 'text-[var(--balance)]'
+                      }`
+                    : 'border-border bg-surface text-text'
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <label htmlFor="sheet-amount" className="mt-3 block text-[13px] leading-[18px] text-text-muted">
+          จำนวนเงิน (บาท)
+        </label>
+        {/* ช่องกรอกจริง (inputmode=decimal) — คีย์แพดของแอปเป็น layer เสริม ไม่ใช่ทางเดียว (§2) */}
+        <div className="mt-1 flex min-h-14 items-center gap-1.5 rounded-[8px] border border-border-strong bg-surface-2 px-3">
+          <span aria-hidden="true" className="font-semibold">
+            ฿
+          </span>
+          <input
+            id="sheet-amount"
+            ref={amountRef}
+            value={amount}
+            onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))}
+            inputMode="decimal"
+            autoComplete="off"
+            enterKeyHint="done"
+            placeholder="0"
+            className="num min-h-11 w-full bg-transparent text-right text-2xl font-semibold outline-none"
+          />
+        </div>
+        <p className="mt-1 text-[13px] leading-[18px] text-text-muted">
+          วันนี้ · หมวด: {suggested?.name ?? 'เลือกภายหลัง'}
+        </p>
+
+        <div className="mt-2 grid grid-cols-4 gap-2">
+          {QUICK.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setAmount(value)}
+              className="min-h-11 rounded-btn border border-border bg-surface-2 font-semibold"
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => press(key)}
+              aria-label={key === 'back' ? 'ลบทีละตัว' : key === '.' ? 'จุดทศนิยม' : key}
+              className="flex min-h-14 items-center justify-center rounded-[8px] border border-border bg-surface-2 text-xl font-semibold active:scale-[0.98]"
+            >
+              {key === 'back' ? (
+                <svg className="size-5" aria-hidden="true">
+                  <use href="#i-back" />
+                </svg>
+              ) : (
+                key
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ปุ่มบันทึก: สูง 56 เสมอ (§2) อยู่ในระยะนิ้วโป้ง (ล่างขวาของ sheet) */}
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => dialogRef.current?.close()}
+            className="min-h-14 rounded-btn border border-border px-4 font-semibold"
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={() => dialogRef.current?.close()}
+            className="min-h-14 flex-1 rounded-btn bg-[var(--balance)] font-bold text-[var(--on-accent)] disabled:opacity-40"
+          >
+            บันทึก
+          </button>
+        </div>
+      </dialog>
+    </>
+  );
+}
