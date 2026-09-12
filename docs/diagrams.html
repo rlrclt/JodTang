@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>จดจ่าย — ไดอะแกรมสถาปัตยกรรม</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#020617; --panel:#0b1220; --line:#1e293b; --txt:#e2e8f0; --dim:#94a3b8;
+    --cyan:#22d3ee; --emerald:#34d399; --violet:#a78bfa; --amber:#fbbf24; --rose:#fb7185;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:"JetBrains Mono","Noto Sans Thai",monospace;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:40px 40px; background-position:-1px -1px; padding:32px 20px 60px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--emerald);animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,211,153,.5)}50%{opacity:.55;box-shadow:0 0 0 8px rgba(52,211,153,0)}}
+  h1{font-size:20px;font-weight:600;letter-spacing:.5px}
+  .sub{color:var(--dim);font-size:12px;margin-bottom:28px;line-height:1.7}
+  h2{font-size:13px;font-weight:600;color:var(--cyan);margin:34px 0 6px;letter-spacing:.4px}
+  .note{color:var(--dim);font-size:11px;margin-bottom:12px;line-height:1.7}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;overflow-x:auto}
+  .mermaid{display:flex;justify-content:center;min-height:60px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:34px}
+  .c{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .c h3{font-size:12px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .c li{list-style:none;font-size:11px;color:var(--dim);line-height:1.9}
+  .c li b{color:var(--txt);font-weight:400}
+  .d{width:8px;height:8px;border-radius:50%}
+  .phones{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:20px;margin-top:6px}
+  .ph{border:1px solid var(--line);border-radius:22px;background:#0f172a;overflow:hidden;height:440px;display:flex;flex-direction:column}
+  .ph .sb{height:26px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#475569;border-bottom:1px solid var(--line)}
+  .ph .body{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .ph .tabs{height:56px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-around;font-size:9px;color:var(--dim)}
+  .ph .tabs .on{color:var(--cyan)}
+  .hero{background:linear-gradient(135deg,#083344,#0f172a);border:1px solid #164e63;border-radius:12px;padding:14px}
+  .hero .lbl{font-size:9px;color:var(--dim)}
+  .hero .amt{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;margin:4px 0}
+  .row{display:flex;justify-content:space-between;font-size:11px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#0b1220}
+  .row .in{color:var(--emerald)} .row .ex{color:var(--rose)}
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .keypad div{height:38px;display:flex;align-items:center;justify-content:center;font-size:14px;border:1px solid var(--line);border-radius:8px;background:#0b1220}
+  .cta{height:46px;border-radius:10px;background:var(--cyan);color:#04202b;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-top:auto}
+  .bar{height:14px;border-radius:4px;background:linear-gradient(90deg,var(--violet),var(--cyan))}
+  footer{margin-top:40px;color:#475569;font-size:10px;line-height:1.8;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span class="dot"></span><h1>จดจ่าย — สถาปัตยกรรม &amp; ฐานข้อมูล</h1></header>
+  <p class="sub">mobile-first PWA รายรับรายจ่าย · Next.js 15 + Better Auth + Postgres(Neon) + Drizzle<br>
+  ไดอะแกรมเรนเดอร์สดด้วย mermaid (ต้องต่อเน็ตครั้งแรก) — ไฟล์เดียว ไม่ต้องติดตั้งอะไร</p>
+
+  <h2>1. ภาพรวมระบบ</h2>
+  <p class="note">มือถือหันเข้า Next.js ที่ Vercel ชั้นเดียว · ไม่มี backend แยกให้ดูแล · Better Auth เป็นคนคุยกับ Google/LINE และเขียนลง Postgres เอง</p>
+  <div class="card"><pre class="mermaid">
+flowchart LR
+  subgraph M["📱 ผู้ใช้ (มือถือเป็นหลัก)"]
+    P["PWA ติดตั้งจาก browser<br/>standalone, safe-area, bottom tab bar"]
+  end
+
+  subgraph V["▲ Vercel — Next.js 15"]
+    direction TB
+    RSC["Server Components<br/>อ่านข้อมูล + render หน้า"]
+    SA["Server Actions<br/>เพิ่ม/แก้/ลบรายการ"]
+    BA["/api/auth/[...all]<br/>Better Auth handler"]
+    SW["service worker + manifest<br/>ติดตั้งลง home screen"]
+  end
+
+  subgraph EXT["🔐 ผู้ให้บริการตัวตน (OAuth 2.1 / OIDC)"]
+    G["Google"]
+    L["LINE Login v2.1<br/>channel ไทย"]
+  end
+
+  subgraph DB["🐘 Neon — Postgres"]
+    PG[("ตารางทั้งหมด<br/>transactions / accounts<br/>categories / budgets / user")]
+  end
+
+  P -->|HTTPS| RSC
+  P -->|"2 แตะ = บันทึก"| SA
+  P -->|"ล็อกอิน"| BA
+  BA <-->|"OIDC + PKCE"| G
+  BA <-->|"OIDC + PKCE"| L
+  RSC -->|"SQL (pooled)"| PG
+  SA -->|"SQL (pooled)"| PG
+  BA -->|"session + account"| PG
+  </pre></div>
+
+  <h2>2. ลำดับการล็อกอิน (Google / LINE)</h2>
+  <p class="note">เส้นทางเดียวทั้งสองเจ้า · Better Auth ทำ state + PKCE + ตรวจ id_token ให้ · เคส LINE ไม่มีอีเมล (ยังไม่ขอสิทธิ์) ต้องผ่านได้</p>
+  <div class="card"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as ผู้ใช้
+  participant A as แอป (PWA)
+  participant B as Better Auth
+  participant I as Google / LINE
+  participant D as Postgres
+
+  U->>A: กด "เข้าสู่ระบบด้วย LINE"
+  A->>B: signIn.social(provider: line)
+  B->>I: authorize + state + PKCE
+  I-->>U: หน้าขอยินยอม (LINE)
+  U->>I: อนุญาต
+  I-->>B: /api/auth/callback/line?code=...
+  B->>I: แลก code เป็น token (server-to-server)
+  I-->>B: id_token + userinfo (userId, name, picture, email?)
+  B->>D: upsert user + account (provider=line)
+  Note over B,D: email เป็น null ได้<br/>emailVerified=false เสมอสำหรับ LINE
+  B-->>A: session cookie (httpOnly)
+  A-->>U: เข้าหน้าแรก
+  alt ยังไม่มีอีเมล
+    A-->>U: แถบ "เพิ่มอีเมลเพื่อกู้คืนบัญชี" (ข้ามได้)
+  end
+  </pre></div>
+
+  <h2>3. ตารางฐานข้อมูล</h2>
+  <p class="note">เงินทุกจำนวนเป็น bigint หน่วยสตางค์ บวกเสมอ (ห้าม float) · currency ล็อก 'THB' ด้วย check · งวดเดือนไทยเป็น generated column ที่ DB · ลบรายการ = soft delete · DDL จริงอยู่ที่ docs/schema.sql (v2)</p>
+  <div class="card"><pre class="mermaid">
+erDiagram
+  user ||--o{ session : "มี"
+  user ||--o{ account : "ผูก provider"
+  user ||--o{ accounts : "เป็นเจ้าของกระเป๋า"
+  user ||--o{ categories : "ตั้งหมวด"
+  user ||--o{ transactions : "บันทึก"
+  user ||--o{ budgets : "ตั้งงบ"
+  accounts ||--o{ transactions : "ตัดจากกระเป๋า"
+  categories ||--o{ transactions : "จัดเข้าหมวด"
+  categories ||--o{ budgets : "งบต่อหมวด"
+
+  user {
+    text id PK
+    text email "nullable เพราะ LINE อาจไม่ให้ · check lower(btrim)"
+    boolean emailVerified "LINE = false เสมอ"
+    text name
+    text image
+    timestamptz createdAt
+  }
+  session {
+    text id PK
+    text userId FK
+    text token
+    timestamptz expiresAt
+  }
+  account {
+    text id PK
+    text userId FK
+    text providerId "google | line"
+    text accountId "userId ฝั่งเจ้า"
+    text accessToken
+    timestamptz accessTokenExpiresAt
+  }
+  verification {
+    text id PK
+    text identifier
+    text value
+    timestamptz expiresAt
+  }
+  accounts {
+    uuid id PK
+    text userId FK
+    text name "ห้ามว่าง · unique ต่อผู้ใช้ (ไม่สนพิมพ์ใหญ่/ช่องว่าง)"
+    text kind "cash bank credit ewallet other"
+    bigint initialBalance "สตางค์ ±1e15 · บัตรเครดิตติดลบได้"
+    char currency "check = THB"
+    timestamptz archivedAt "ห้ามลบ มีรายการเก่าอ้างอยู่"
+  }
+  categories {
+    uuid id PK
+    text userId FK
+    text kind "income | expense"
+    text name "unique ต่อ user+kind"
+    text icon
+    text color
+    int sortOrder
+    timestamptz archivedAt
+  }
+  transactions {
+    uuid id PK
+    text userId FK
+    uuid accountId FK "composite FK (id,user_id)"
+    uuid toAccountId FK "เฉพาะ transfer"
+    uuid categoryId FK "null เมื่อ transfer"
+    text kind "income | expense | transfer"
+    bigint amount "สตางค์ บวกเสมอ ห้าม 0 · เพดาน 1e15"
+    char currency "check = THB"
+    timestamptz occurredAt "เวลาเกิดรายการ"
+    date occurredMonthBkk "generated stored · งวดเดือนไทย +07"
+    text note
+    timestamptz deletedAt "soft delete"
+    timestamptz createdAt
+  }
+  budgets {
+    uuid id PK
+    text userId FK
+    uuid categoryId FK
+    date periodMonth "วันแรกของเดือน · unique ต่อ user+category+เดือน"
+    bigint amount "สตางค์ บวกเสมอ"
+    char currency "check = THB"
+  }
+  </pre></div>
+
+  <h2>4. เส้นทางผู้ใช้: บันทึกรายจ่าย 2 แตะ</h2>
+  <p class="note">เป็น flow ที่ตัดสินใจทุกอย่างของ UX — ถ้าอันนี้ช้า แอปจะไม่ถูกใช้</p>
+  <div class="card"><pre class="mermaid">
+flowchart TD
+  A["เปิดแอป"] --> B{"มี session?"}
+  B -->|ไม่| C["หน้า login<br/>Google / LINE"] --> D
+  B -->|มี| D["หน้าแรก: ยอดเดือนนี้"]
+  D -->|กดปุ่ม + กลางล่าง| E["bottom sheet<br/>คีย์แพดตัวเลข"]
+  E -->|"แตะ 1: พิมพ์จำนวน"| F["เดาหมวดจากประวัติ<br/>+ รายการล่าสุด"]
+  F -->|"แตะ 2: บันทึก"| G["optimistic UI<br/>ปิด sheet ทันที · haptic"]
+  G --> H["server action<br/>insert transaction"]
+  H --> I{"สำเร็จ?"}
+  I -->|ใช่| J["ยอดเดือนนี้ + รายการอัปเดต"]
+  I -->|ไม่| K["แถบ error + ปุ่มลองใหม่<br/>ข้อมูลที่พิมพ์ยังอยู่"]
+  J --> D
+  </pre></div>
+
+  <h2>5. หน้าจอหลัก (wireframe ความรู้สึก mobile native)</h2>
+  <p class="note">สูง 440px · ปุ่ม/แถว ≥ 44px · ปุ่มบันทึกอยู่ในระยะนิ้วโป้ง · ตัวเลข tabular-nums</p>
+  <div class="phones">
+    <div class="ph">
+      <div class="sb">หน้าจอ 390×844 · safe-area</div>
+      <div class="body">
+        <div class="hero">
+          <div class="lbl">กันยายน 2569 · คงเหลือ</div>
+          <div class="amt">12,480.50</div>
+          <div class="lbl"><span class="in" style="color:var(--emerald)">+28,000</span> · <span style="color:var(--rose)">−15,519.50</span></div>
+        </div>
+        <div class="row"><span>☕ กาแฟ</span><span class="ex">−65.00</span></div>
+        <div class="row"><span>🍜 อาหารกลางวัน</span><span class="ex">−120.00</span></div>
+        <div class="row"><span>💰 เงินเดือน</span><span class="in">+28,000.00</span></div>
+        <div class="row"><span>🚌 BTS</span><span class="ex">−44.00</span></div>
+      </div>
+      <div class="tabs"><span class="on">แรก</span><span>รายการ</span><span>สรุป</span><span>ตั้งค่า</span></div>
+    </div>
+    <div class="ph">
+      <div class="sb">bottom sheet — เพิ่มรายการ</div>
+      <div class="body">
+        <div style="font-size:10px;color:var(--dim)">รายจ่าย</div>
+        <div style="font-size:30px;font-weight:600;font-variant-numeric:tabular-nums">120.00</div>
+        <div style="font-size:10px;color:var(--dim)">หมวด: 🍜 อาหาร · กระเป๋า: เงินสด</div>
+        <div class="keypad">
+          <div>1</div><div>2</div><div>3</div>
+          <div>4</div><div>5</div><div>6</div>
+          <div>7</div><div>8</div><div>9</div>
+          <div>.</div><div>0</div><div>⌫</div>
+        </div>
+        <div class="cta">บันทึก</div>
+      </div>
+    </div>
+    <div class="ph">
+      <div class="sb">สรุป — กราฟตามหมวด</div>
+      <div class="body">
+        <div style="font-size:10px;color:var(--dim)">รายจ่ายเดือนนี้</div>
+        <div style="font-size:22px;font-weight:600;font-variant-numeric:tabular-nums">15,519.50</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:10px;margin-top:6px">
+          <div><div style="color:var(--dim)">🍜 อาหาร 32%</div><div class="bar" style="width:32%"></div></div>
+          <div><div style="color:var(--dim)">🚌 เดินทาง 21%</div><div class="bar" style="width:21%"></div></div>
+          <div><div style="color:var(--dim)">🏠 ที่พัก 18%</div><div class="bar" style="width:18%"></div></div>
+          <div><div style="color:var(--dim)">🛒 ของใช้ 14%</div><div class="bar" style="width:14%"></div></div>
+        </div>
+      </div>
+      <div class="tabs"><span>แรก</span><span>รายการ</span><span class="on">สรุป</span><span>ตั้งค่า</span></div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="c">
+      <h3><span class="d" style="background:var(--cyan)"></span>Stack</h3>
+      <ul>
+        <li>• <b>Next.js 15</b> App Router + TypeScript</li>
+        <li>• <b>Tailwind CSS v4</b> (ไม่ใช้ไลบรารี UI)</li>
+        <li>• <b>Better Auth</b> → Google + LINE ในตัว</li>
+        <li>• <b>Drizzle ORM</b> + drizzle-kit migrate</li>
+        <li>• <b>Neon Postgres</b> — pooled / direct แยกกัน</li>
+        <li>• <b>Vercel</b> + PWA manifest/service worker</li>
+      </ul>
+    </div>
+    <div class="c">
+      <h3><span class="d" style="background:var(--violet)"></span>กติกาข้อมูล</h3>
+      <ul>
+        <li>• เงิน = <b>bigint สตางค์</b> เสมอ</li>
+        <li>• <b>timestamptz</b> + timezone ผู้ใช้ Asia/Bangkok</li>
+        <li>• ลบ = <b>soft delete</b> (deleted_at)</li>
+        <li>• ทุก query กรองด้วย <b>user_id</b></li>
+        <li>• LINE ไม่มีอีเมลได้ → email nullable</li>
+      </ul>
+    </div>
+    <div class="c">
+      <h3><span class="d" style="background:var(--emerald)"></span>Native feel</h3>
+      <ul>
+        <li>• safe-area + <b>bottom tab bar</b> 4 แท็บ</li>
+        <li>• <b>bottom sheet</b> ไม่ใช้ modal กลางจอ</li>
+        <li>• คีย์แพดตัวเลขเอง · ปุ่ม ≥ 44px</li>
+        <li>• <b>optimistic UI</b> + haptic ตอนบันทึก</li>
+        <li>• skeleton ไม่ใช่ spinner · ไม่มี page reload</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    จดจ่าย v1 · ไดอะแกรมนี้เป็นข้อเสนอ ยังไม่เริ่มเขียนโค้ด · แก้ได้ที่ docs/diagrams.html (แก้ข้อความในบล็อก mermaid แล้วรีเฟรช)<br>
+    บางไลบรารีโหลดจาก CDN (mermaid + ฟอนต์) ถ้าเปิดออฟไลน์จะเห็นแค่บล็อกข้อความ
+  </footer>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    securityLevel: "loose",
+    fontFamily: '"JetBrains Mono","Noto Sans Thai",monospace',
+    themeVariables: {
+      darkMode: true,
+      background: "#020617",
+      primaryColor: "#083344",
+      primaryTextColor: "#e2e8f0",
+      primaryBorderColor: "#22d3ee",
+      secondaryColor: "#064e3b",
+      tertiaryColor: "#4c1d95",
+      lineColor: "#64748b",
+      textColor: "#e2e8f0",
+      fontSize: "15px",
+      clusterBkg: "#0b1220",
+      clusterBorder: "#334155",
+      nodeBorder: "#22d3ee",
+      edgeLabelBackground: "#0b1220"
+    },
+    er: { useMaxWidth: true },
+    flowchart: { curve: "basis", htmlLabels: true },
+    sequence: { useMaxWidth: true, mirrorActors: false }
+  });
+</script>
+</body>
+</html>

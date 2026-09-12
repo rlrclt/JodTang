@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1220" media="(prefers-color-scheme: dark)">
+<title>จดจ่าย · theme preview (design v1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap">
+<style>
+/* =========================================================
+   design tokens — docs/design.md §1.1 §1.2 §1.4 §1.5 §1.7
+   ค่าทุกตัวคัดลอกจาก design.md เท่านั้น ไม่คิดค่าใหม่
+   ========================================================= */
+:root, .t-light{
+  /* §1.1 สี (light) */
+  --bg:#F6F7F9; --surface:#FFFFFF; --surface-2:#F1F3F6;
+  --border:#E3E7ED; --border-strong:#8A93A0;
+  --text:#101828; --text-muted:#667085;
+  --income:#15803D; --expense:#BE123C; --balance:#0E7490; --warn:#B45309;
+  --focus:#2563EB; --on-accent:#FFFFFF;
+  /* color ต้องประกาศที่ scope ไม่ใช่ body — ไม่งั้น subtree .t-dark จะสืบทอด "ค่าที่คำนวณแล้ว" ของโหมดสว่าง */
+  color:var(--text); background:var(--bg);
+  /* §1.1 ชุดสีกราฟ 8 สี เรียงตามลำดับ (กราฟรายจ่ายห้ามใช้เฉดเขียว) */
+  --chart-1:#0891B2; --chart-2:#7C3AED; --chart-3:#D97706; --chart-4:#16A34A;
+  --chart-5:#DB2777; --chart-6:#0D9488; --chart-7:#65A30D; --chart-8:#E11D48;
+  /* §1.2 ฟอนต์ */
+  --font-sans:"IBM Plex Sans Thai", system-ui, "Sarabun", sans-serif;
+  /* §1.4 radius */
+  --radius-sm:8px; --radius-btn:12px; --radius-card:16px; --radius-sheet:20px; --radius-pill:999px;
+  /* §1.5 shadow */
+  --shadow-card:0 1px 2px rgb(2 6 23 / .06);
+  --shadow-sheet:0 -8px 32px rgb(2 6 23 / .18);
+  --shadow-sticky:0 4px 12px rgb(2 6 23 / .06);
+  /* §1.3 / §2 metrics */
+  --tap:44px; --row-h:56px; --tab-h:56px;
+  /* §1.2 type scale (px / line-height) */
+  --fs-display:32px; --lh-display:40px;
+  --fs-h1:24px; --lh-h1:32px;
+  --fs-h2:20px; --lh-h2:28px;
+  --fs-body:15px; --lh-body:24px;
+  --fs-cap:13px; --lh-cap:18px;
+}
+/* ค่าโหมดมืดทับเฉพาะสี — ฟอนต์/radius/metric ใช้ชุดเดียวกับ :root โดยไม่ประกาศซ้ำ */
+html.dark, .t-dark{
+  --bg:#0B1220; --surface:#121B2C; --surface-2:#18233A;
+  --border:#24314D; --border-strong:#5B6880;
+  --text:#E6EBF2; --text-muted:#93A0B5;
+  --income:#4ADE80; --expense:#FB7185; --balance:#22D3EE; --warn:#FBBF24;
+  --focus:#60A5FA; --on-accent:#08101F;
+  color:var(--text); background:var(--bg);   /* ดูคอมเมนต์ในบล็อก light */
+  --shadow-card:none; /* §1.5 โหมดมืดไม่ใช้เงาแยกชั้น — แยกด้วย --surface + --border */
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; padding:16px; background:var(--bg); color:var(--text);
+  font-family:var(--font-sans); font-size:var(--fs-body); line-height:var(--lh-body); font-weight:400;
+  overflow-x:hidden; overscroll-behavior:none;              /* §2 */
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+}
+h1,h2,h3,p,ul,figure{margin:0}
+ul{padding:0;list-style:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+:focus-visible{outline:2px solid var(--focus); outline-offset:2px}    /* §5 */
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+.ico{width:20px;height:20px;flex:0 0 auto}                            /* §1.3 ไอคอนในแถว 20 */
+.cap{font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted)}
+.num,.amt{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}  /* §1.2 */
+
+/* ---------- เปลือกหน้าเว็บ (ใช้โทเคนชุดเดียวกับแอป) ---------- */
+.shell{max-width:900px;margin:0 auto 24px}
+.shell h1{font-size:var(--fs-h1);line-height:var(--lh-h1);font-weight:700}
+.shell p{margin-top:8px;max-width:78ch}
+#themeToggle{margin-top:16px;min-height:var(--tap);padding:0 16px;display:inline-flex;align-items:center;gap:8px;
+  border:1px solid var(--border-strong);border-radius:var(--radius-btn);background:var(--surface);font-weight:600;
+  transition:transform 120ms ease-out}
+#themeToggle:active{transform:scale(.98)}
+#themeToggle[aria-pressed="true"]{background:var(--surface-2);color:var(--balance)}
+.devices{display:flex;flex-wrap:wrap;gap:24px;justify-content:center;align-items:flex-start}
+.frame-wrap{max-width:100%;min-width:0}
+.frame-cap{text-align:center;margin-bottom:8px}
+.device{width:390px;max-width:100%;height:844px;overflow-y:auto;overflow-x:hidden;   /* จอจำลอง 390x844 §1 เป้าอุปกรณ์ */
+  background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-sheet)}
+
+/* ---------- จอในเครื่องจำลอง ---------- */
+.screen{position:relative;display:flex;flex-direction:column;min-height:844px}
+.screen + .screen{border-top:2px dashed var(--border)}
+.screen-head{padding:calc(16px + env(safe-area-inset-top)) 16px 8px;display:flex;align-items:center;gap:8px}  /* §2 safe area */
+.screen-title{font-size:var(--fs-h1);line-height:var(--lh-h1);font-weight:600;flex:1}
+.screen-body{flex:1;padding:8px 16px calc(72px + env(safe-area-inset-bottom))}
+.icon-btn{width:var(--tap);height:var(--tap);display:inline-flex;align-items:center;justify-content:center;
+  border-radius:var(--radius-sm);color:var(--text-muted);transition:transform 120ms ease-out}
+.icon-btn:active{transform:scale(.98)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px;
+  box-shadow:var(--shadow-card);margin-bottom:16px}
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0}
+.sec-title{font-size:var(--fs-h2);line-height:var(--lh-h2);font-weight:600}
+.link-btn{min-height:var(--tap);padding:0 4px;color:var(--balance);font-weight:600}
+.kpi-label{font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted)}
+.kpi-main{font-size:var(--fs-display);line-height:var(--lh-display);font-weight:700;
+  font-variant-numeric:tabular-nums;text-align:right}                            /* display 32/40 §1.2 */
+.kpi-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:var(--tap);}
+.kpi-key{color:var(--text-muted)}
+.amt.income{color:var(--income)} .amt.expense{color:var(--expense)} .amt.transfer{color:var(--balance)}
+.amt.is-warn{color:var(--warn)}
+
+/* แถวในลิสต์: สูง 56, ทั้งแถวเป็น <button> (§2) */
+.list li + li{border-top:1px solid var(--border)}
+.row{display:flex;align-items:center;gap:12px;width:100%;min-height:var(--row-h);padding:0 8px;
+  border-radius:var(--radius-btn);transition:transform 120ms ease-out}
+.row:active{transform:scale(.98)}
+.dot{width:10px;height:10px;border-radius:var(--radius-pill);flex:0 0 auto}
+.row-main{flex:1;min-width:0;display:flex;flex-direction:column;text-align:left}
+.row-title{font-size:var(--fs-body);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-sub{font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+/* ชิป (§1.4 radius 12, tap 44 §2) */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:var(--tap);padding:0 16px;display:inline-flex;align-items:center;gap:6px;
+  border:1px solid var(--border);border-radius:var(--radius-btn);background:var(--surface);font-weight:600;
+  transition:transform 120ms ease-out}
+.chip:active{transform:scale(.98)}
+.chip[aria-pressed="true"]{background:var(--surface-2);border-color:var(--border-strong);font-weight:700}
+.chip[data-dir="in"][aria-pressed="true"]{color:var(--income)}
+.chip[data-dir="out"][aria-pressed="true"]{color:var(--expense)}
+.chip[data-dir="move"][aria-pressed="true"]{color:var(--balance)}
+
+/* ช่องกรอก (§1.4 radius 8, ขอบ --border-strong ให้ผ่าน 3:1) */
+.field{display:flex;align-items:center;gap:6px;min-height:var(--tab-h);padding:0 12px;margin-bottom:8px;
+  border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface-2)}
+.field-label{display:block;margin-bottom:4px;font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted)}
+.field input{flex:1;min-width:0;min-height:var(--tap);border:0;background:none;outline-offset:0;
+  font-size:var(--fs-h1);font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+/* ฿ เป็นส่วนหนึ่งของตัวเลขเงิน → ใช้ --text (--text-muted บน --surface-2 ได้ 4.48:1 ต่ำกว่า 4.5) */
+.baht{color:var(--text);font-weight:600}
+.field-search{display:flex;align-items:center;gap:8px;background:var(--surface)}
+.field-search input{flex:1;min-width:0;min-height:var(--tap);border:0;background:none;outline-offset:0}
+
+/* bottom sheet (§1.4 มุมบน 20, §1.5 shadow-sheet, §2) */
+.sheet{margin-top:auto;background:var(--surface);border:1px solid var(--border);border-bottom:0;
+  border-radius:var(--radius-sheet) var(--radius-sheet) 0 0;
+  padding:8px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:var(--shadow-sheet)}
+.sheet-body{flex:0 0 auto}
+.handle{width:40px;height:4px;margin:4px auto 12px;border-radius:var(--radius-pill);background:var(--border-strong)}
+.sheet .chips{margin-bottom:8px}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+.kpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+.key{min-height:56px;display:flex;align-items:center;justify-content:center;font-size:var(--fs-h2);font-weight:600;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);
+  transition:transform 120ms ease-out}                                          /* §2 ปุ่มคีย์แพด >= 56 สูง */
+.key:active{transform:scale(.98)}
+.quick-key{border-radius:var(--radius-btn);font-size:var(--fs-body)}
+.btn-primary{width:100%;min-height:56px;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--radius-btn);background:var(--balance);color:var(--on-accent);font-weight:700;
+  transition:transform 120ms ease-out}                                          /* §2 ปุ่มบันทึก 56 เสมอ */
+.btn-primary:active{transform:scale(.98)}
+
+/* กราฟ (div + CSS, ไม่ใช้ gradient/ไลบรารี) */
+.bars{display:flex;align-items:flex-end;gap:8px;height:140px;margin-top:8px}
+.bar-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
+.bar{width:100%;background:var(--expense);border-radius:var(--radius-sm) var(--radius-sm) 0 0;
+  border:1px solid var(--expense)}
+.bar-label{font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted)}
+.bar-label.is-current{color:var(--text);font-weight:600}
+.bar-row{display:flex;align-items:center;gap:12px;min-height:var(--tap);padding:0 8px}
+.bar-row.budget{align-items:flex-start;flex-direction:row;flex-wrap:nowrap;padding-bottom:0}
+.track{height:8px;margin:0 8px 0;border-radius:var(--radius-pill);background:var(--surface-2);
+  border:1px solid var(--border);overflow:hidden}
+.fill{display:block;height:100%;border-radius:var(--radius-pill);background:var(--balance)}
+.fill.is-warn{background:var(--warn)}
+.status{margin:4px 8px 12px}
+.budget + .track{margin-top:8px}
+
+/* แถบแท็บ 56 + safe area (§2, §3) + FAB */
+.tabbar{margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);z-index:20;
+  height:calc(var(--tab-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);
+  background:var(--surface);border-top:1px solid var(--border);box-shadow:var(--shadow-sticky)}
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-height:var(--tap);font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted);
+  transition:transform 120ms ease-out}
+.tab:active{transform:scale(.98)}
+.tab[aria-current="page"]{color:var(--balance);font-weight:600}
+.fab{position:absolute;right:16px;bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 16px);
+  width:56px;height:56px;display:flex;align-items:center;justify-content:center;z-index:30;
+  border-radius:var(--radius-card);background:var(--balance);color:var(--on-accent);
+  box-shadow:var(--shadow-sticky);transition:transform 120ms ease-out}
+.fab:active{transform:scale(.98)}
+.fab .ico{width:24px;height:24px}
+
+@media (max-width:839px){          /* จอแคบ: วางสองเครื่องซ้อนกัน ไม่ให้มี scroll แนวนอน (§2) */
+  body{padding:8px 0}
+  .shell{padding:0 16px}
+  .frame-cap{padding:0 16px}
+}
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-5H9v5H5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19v-8M12 19V5M19 19v-5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 6l-6 6 6 6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 6l6 6-6 6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5h12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H8L2 12z"/><path d="M16.5 9.5l-5 5M11.5 9.5l5 5"/></symbol>
+  </svg>
+
+<header class="shell">
+  <h1>จดจ่าย · mock ธีม (design v1)</h1>
+  <p class="cap">โทเคนชุดเดียวจาก <code>docs/design.md</code> §1.1 · §1.2 · §1.4 · §1.5 · §1.7 — สองเครื่องจำลองจอ 390×844 วางข้างกัน
+  (ซ้ายปัก <code>.t-light</code> · ขวาปัก <code>.t-dark</code>) ทั้งสองเครื่องใช้ DOM ชุดเดียวกัน ต่างกันแค่คลาสขอบเขตธีม
+  ปุ่มด้านล่างสลับคลาส <code>.dark</code> ที่ <code>&lt;html&gt;</code> เท่านั้น (กลไกเดียวกับของจริง) — เปลือกหน้าเว็บนี้ใช้โทเคนชุดเดียวกัน จึงเปลี่ยนตามทันที</p>
+  <button type="button" id="themeToggle" aria-pressed="false">สลับธีม: เพิ่ม/ลบคลาส .dark ที่ &lt;html&gt;</button>
+</header>
+
+<main class="devices">
+  <section class="frame-wrap">
+    <p class="frame-cap cap">โหมดสว่าง · light</p>
+    <div class="device t-light">
+    <!-- จอ 1 · หน้าแรก (§4 S2) -->
+    <section class="screen">
+      <header class="screen-head">
+        <button type="button" class="icon-btn" aria-label="เดือนก่อนหน้า"><svg class="ico" aria-hidden="true"><use href="#i-left"/></svg></button>
+        <h2 class="screen-title">กันยายน 2569</h2>
+        <button type="button" class="icon-btn" aria-label="เดือนถัดไป"><svg class="ico" aria-hidden="true"><use href="#i-right"/></svg></button>
+      </header>
+      <div class="screen-body">
+        <div class="card">
+          <p class="kpi-label">คงเหลือเดือนนี้</p>
+          <p class="kpi-main num">฿11,660.00</p>
+        <div class="kpi-row"><span class="kpi-key">รับ</span><span class="amt income">+฿24,500.00</span></div>
+        <div class="kpi-row"><span class="kpi-key">จ่าย</span><span class="amt expense">−฿12,840.00</span></div>
+        </div>
+        <div class="sec-head"><h3 class="sec-title">รายการล่าสุด</h3><button type="button" class="link-btn">ดูทั้งหมด</button></div>
+        <ul class="list">
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-6)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">13 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿185.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--income)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เงินเดือน</span><span class="row-sub">13 ก.ย. · รับ</span></span>
+          <span class="amt income">+฿22,500.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-5)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เดินทาง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿320.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-1)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿9,100.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-2)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ของใช้</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,240.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-3)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าน้ำค่าไฟ</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,900.00</span>
+        </button></li>
+        </ul>
+      </div>
+    <nav class="tabbar" aria-label="แท็บหลัก">
+      <button type="button" class="tab" aria-current="page"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg>หน้าแรก</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>รายการ</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>สรุป</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>ตั้งค่า</button>
+    </nav>
+    <button type="button" class="fab" aria-label="เพิ่มรายการ"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </section>
+
+    <!-- จอ 2 · เพิ่มรายการ (§4 S3 + §2 bottom sheet) -->
+    <section class="screen">
+      <header class="screen-head">
+        <h2 class="screen-title">เพิ่มรายการ</h2>
+        <p class="cap">เปิดจาก FAB · แถบแท็บ/FAB อยู่หลัง sheet</p>
+      </header>
+      <div class="screen-body sheet-body">
+        <p class="cap">ฉากหลัง: หน้าแรก — แตะ backdrop หรือปัดลงเพื่อปิด (แบบ ESC ใช้ได้เพราะใช้ &lt;dialog&gt; ในของจริง)</p>
+      </div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="เพิ่มรายการ">
+        <div class="handle" aria-hidden="true"></div>
+      <div class="chips" role="group" aria-label="ประเภทรายการ">
+        <button type="button" class="chip" data-dir="in" aria-pressed="false">รับ</button>
+        <button type="button" class="chip" data-dir="out" aria-pressed="true">จ่าย</button>
+        <button type="button" class="chip" data-dir="move" aria-pressed="false">โอน</button>
+      </div>
+        <label class="field-label" for="amountL">จำนวนเงิน (บาท)</label>
+        <div class="field">
+          <span class="baht" aria-hidden="true">฿</span>
+          <input id="amountL" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="120.00" aria-describedby="sheet-noteL">
+        </div>
+        <p class="cap" id="sheet-noteL">วันนี้ · หมวด: อาหาร (เดาจากรายการเดิม)</p>
+        <div class="quick">
+        <button type="button" class="key quick-key">20</button>        <button type="button" class="key quick-key">50</button>        <button type="button" class="key quick-key">100</button>        <button type="button" class="key quick-key">500</button>
+        </div>
+        <div class="kpad">
+        <button type="button" class="key">1</button>        <button type="button" class="key">2</button>        <button type="button" class="key">3</button>        <button type="button" class="key">4</button>        <button type="button" class="key">5</button>        <button type="button" class="key">6</button>        <button type="button" class="key">7</button>        <button type="button" class="key">8</button>        <button type="button" class="key">9</button>        <button type="button" class="key">.</button>        <button type="button" class="key">0</button>        <button type="button" class="key" aria-label="ลบทีละตัว กดค้างเพื่อล้าง"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg></button>
+        </div>
+        <button type="button" class="btn-primary">บันทึก</button>
+      </div>
+    </section>
+
+    <!-- จอ 3 · รายการทั้งหมด (§4 S4) -->
+    <section class="screen">
+      <header class="screen-head">
+        <h2 class="screen-title">รายการทั้งหมด</h2>
+        <p class="cap">กันยายน 2569</p>
+      </header>
+      <div class="screen-body">
+        <div class="field field-search">
+          <label class="sr-only" for="qL">ค้นหารายการจากโน้ตหรือชื่อหมวด</label>
+          <svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="qL" type="search" placeholder="ค้นหาโน้ต/หมวด" autocomplete="off">
+        </div>
+        <div class="chips" role="group" aria-label="ตัวกรองรายการ">
+          <button type="button" class="chip" aria-pressed="true">ทั้งหมด</button>
+          <button type="button" class="chip" data-dir="in" aria-pressed="false">รับ</button>
+          <button type="button" class="chip" data-dir="out" aria-pressed="false">จ่าย</button>
+          <button type="button" class="chip" data-dir="move" aria-pressed="false">โอน</button>
+          <button type="button" class="chip" aria-pressed="false">อาหาร</button>
+          <button type="button" class="chip" aria-pressed="false">ค่าห้อง</button>
+          <button type="button" class="chip" aria-pressed="false">กันยายน</button>
+        </div>
+        <ul class="list">
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-6)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">13 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿185.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--income)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เงินเดือน</span><span class="row-sub">13 ก.ย. · รับ</span></span>
+          <span class="amt income">+฿22,500.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-5)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เดินทาง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿320.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-1)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿9,100.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-2)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ของใช้</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,240.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-3)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าน้ำค่าไฟ</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,900.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--income)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ขายของ</span><span class="row-sub">10 ก.ย. · รับ</span></span>
+          <span class="amt income">+฿2,000.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-7)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">กาแฟ</span><span class="row-sub">10 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿95.00</span>
+        </button></li>
+        </ul>
+      </div>
+    <nav class="tabbar" aria-label="แท็บหลัก">
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg>หน้าแรก</button>
+      <button type="button" class="tab" aria-current="page"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>รายการ</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>สรุป</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>ตั้งค่า</button>
+    </nav>
+    <button type="button" class="fab" aria-label="เพิ่มรายการ"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </section>
+
+    <!-- จอ 4 · สรุป (§4 S5) -->
+    <section class="screen">
+      <header class="screen-head">
+        <h2 class="screen-title">สรุป</h2>
+        <p class="cap">กันยายน 2569</p>
+      </header>
+      <div class="screen-body">
+        <div class="card">
+          <div class="sec-head"><h3 class="sec-title">รายจ่าย 6 เดือน</h3>
+            <span class="amt">฿69,710.00</span></div>
+          <div class="bars">
+          <div class="bar-col"><span class="bar" style="height:83.6%" role="img" aria-label="เม.ย. รายจ่าย ฿11,240.00"></span><span class="bar-label">เม.ย.</span></div>
+          <div class="bar-col"><span class="bar" style="height:73.3%" role="img" aria-label="พ.ค. รายจ่าย ฿9,860.00"></span><span class="bar-label">พ.ค.</span></div>
+          <div class="bar-col"><span class="bar" style="height:100.0%" role="img" aria-label="มิ.ย. รายจ่าย ฿13,450.00"></span><span class="bar-label">มิ.ย.</span></div>
+          <div class="bar-col"><span class="bar" style="height:74.5%" role="img" aria-label="ก.ค. รายจ่าย ฿10,020.00"></span><span class="bar-label">ก.ค.</span></div>
+          <div class="bar-col"><span class="bar" style="height:91.4%" role="img" aria-label="ส.ค. รายจ่าย ฿12,300.00"></span><span class="bar-label">ส.ค.</span></div>
+          <div class="bar-col"><span class="bar is-current" style="height:95.5%" role="img" aria-label="ก.ย. รายจ่าย ฿12,840.00"></span><span class="bar-label is-current">ก.ย.</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec-head"><h3 class="sec-title">รายจ่ายตามหมวด</h3><span class="amt">฿12,840.00</span></div>
+          <ul class="list">
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-1)" aria-hidden="true"></span><span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">70.9% ของรายจ่าย</span></span><span class="amt">฿9,100.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-3)" aria-hidden="true"></span><span class="row-main"><span class="row-title">ค่าน้ำค่าไฟ</span><span class="row-sub">14.8% ของรายจ่าย</span></span><span class="amt">฿1,900.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-2)" aria-hidden="true"></span><span class="row-main"><span class="row-title">ของใช้</span><span class="row-sub">9.7% ของรายจ่าย</span></span><span class="amt">฿1,240.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-5)" aria-hidden="true"></span><span class="row-main"><span class="row-title">เดินทาง</span><span class="row-sub">2.5% ของรายจ่าย</span></span><span class="amt">฿320.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-6)" aria-hidden="true"></span><span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">1.4% ของรายจ่าย</span></span><span class="amt">฿185.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-7)" aria-hidden="true"></span><span class="row-main"><span class="row-title">กาแฟ</span><span class="row-sub">0.7% ของรายจ่าย</span></span><span class="amt">฿95.00</span></div></li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="sec-head"><h3 class="sec-title">เทียบงบ</h3><span class="cap">งบเดือนนี้</span></div>
+          <ul class="list">
+        <li><div class="bar-row budget"><span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">ใช้ไป 3% ของงบเดือนนี้</span></span><span class="amt">฿185.00 / ฿6,000.00</span></div><div class="track" role="img" aria-label="ใช้ไป 3% ของงบ อาหาร"><span class="fill" style="width:3.1%"></span></div><p class="status cap">อยู่ในงบ</p></li>
+        <li><div class="bar-row budget"><span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">ใช้ไป 96% ของงบเดือนนี้</span></span><span class="amt is-warn">฿9,100.00 / ฿9,500.00</span></div><div class="track" role="img" aria-label="ใช้ไป 96% ของงบ ค่าห้อง"><span class="fill is-warn" style="width:95.8%"></span></div><p class="status cap">⚠ ใกล้เกินงบ</p></li>
+          </ul>
+        </div>
+      </div>
+    <nav class="tabbar" aria-label="แท็บหลัก">
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg>หน้าแรก</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>รายการ</button>
+      <button type="button" class="tab" aria-current="page"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>สรุป</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>ตั้งค่า</button>
+    </nav>
+    <button type="button" class="fab" aria-label="เพิ่มรายการ"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </section>
+    </div>
+  </section>
+  <section class="frame-wrap">
+    <p class="frame-cap cap">โหมดมืด · dark</p>
+    <div class="device t-dark">
+    <!-- จอ 1 · หน้าแรก (§4 S2) -->
+    <section class="screen">
+      <header class="screen-head">
+        <button type="button" class="icon-btn" aria-label="เดือนก่อนหน้า"><svg class="ico" aria-hidden="true"><use href="#i-left"/></svg></button>
+        <h2 class="screen-title">กันยายน 2569</h2>
+        <button type="button" class="icon-btn" aria-label="เดือนถัดไป"><svg class="ico" aria-hidden="true"><use href="#i-right"/></svg></button>
+      </header>
+      <div class="screen-body">
+        <div class="card">
+          <p class="kpi-label">คงเหลือเดือนนี้</p>
+          <p class="kpi-main num">฿11,660.00</p>
+        <div class="kpi-row"><span class="kpi-key">รับ</span><span class="amt income">+฿24,500.00</span></div>
+        <div class="kpi-row"><span class="kpi-key">จ่าย</span><span class="amt expense">−฿12,840.00</span></div>
+        </div>
+        <div class="sec-head"><h3 class="sec-title">รายการล่าสุด</h3><button type="button" class="link-btn">ดูทั้งหมด</button></div>
+        <ul class="list">
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-6)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">13 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿185.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--income)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เงินเดือน</span><span class="row-sub">13 ก.ย. · รับ</span></span>
+          <span class="amt income">+฿22,500.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-5)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เดินทาง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿320.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-1)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿9,100.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-2)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ของใช้</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,240.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-3)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าน้ำค่าไฟ</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,900.00</span>
+        </button></li>
+        </ul>
+      </div>
+    <nav class="tabbar" aria-label="แท็บหลัก">
+      <button type="button" class="tab" aria-current="page"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg>หน้าแรก</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>รายการ</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>สรุป</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>ตั้งค่า</button>
+    </nav>
+    <button type="button" class="fab" aria-label="เพิ่มรายการ"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </section>
+
+    <!-- จอ 2 · เพิ่มรายการ (§4 S3 + §2 bottom sheet) -->
+    <section class="screen">
+      <header class="screen-head">
+        <h2 class="screen-title">เพิ่มรายการ</h2>
+        <p class="cap">เปิดจาก FAB · แถบแท็บ/FAB อยู่หลัง sheet</p>
+      </header>
+      <div class="screen-body sheet-body">
+        <p class="cap">ฉากหลัง: หน้าแรก — แตะ backdrop หรือปัดลงเพื่อปิด (แบบ ESC ใช้ได้เพราะใช้ &lt;dialog&gt; ในของจริง)</p>
+      </div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="เพิ่มรายการ">
+        <div class="handle" aria-hidden="true"></div>
+      <div class="chips" role="group" aria-label="ประเภทรายการ">
+        <button type="button" class="chip" data-dir="in" aria-pressed="false">รับ</button>
+        <button type="button" class="chip" data-dir="out" aria-pressed="true">จ่าย</button>
+        <button type="button" class="chip" data-dir="move" aria-pressed="false">โอน</button>
+      </div>
+        <label class="field-label" for="amountD">จำนวนเงิน (บาท)</label>
+        <div class="field">
+          <span class="baht" aria-hidden="true">฿</span>
+          <input id="amountD" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="120.00" aria-describedby="sheet-noteD">
+        </div>
+        <p class="cap" id="sheet-noteD">วันนี้ · หมวด: อาหาร (เดาจากรายการเดิม)</p>
+        <div class="quick">
+        <button type="button" class="key quick-key">20</button>        <button type="button" class="key quick-key">50</button>        <button type="button" class="key quick-key">100</button>        <button type="button" class="key quick-key">500</button>
+        </div>
+        <div class="kpad">
+        <button type="button" class="key">1</button>        <button type="button" class="key">2</button>        <button type="button" class="key">3</button>        <button type="button" class="key">4</button>        <button type="button" class="key">5</button>        <button type="button" class="key">6</button>        <button type="button" class="key">7</button>        <button type="button" class="key">8</button>        <button type="button" class="key">9</button>        <button type="button" class="key">.</button>        <button type="button" class="key">0</button>        <button type="button" class="key" aria-label="ลบทีละตัว กดค้างเพื่อล้าง"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg></button>
+        </div>
+        <button type="button" class="btn-primary">บันทึก</button>
+      </div>
+    </section>
+
+    <!-- จอ 3 · รายการทั้งหมด (§4 S4) -->
+    <section class="screen">
+      <header class="screen-head">
+        <h2 class="screen-title">รายการทั้งหมด</h2>
+        <p class="cap">กันยายน 2569</p>
+      </header>
+      <div class="screen-body">
+        <div class="field field-search">
+          <label class="sr-only" for="qD">ค้นหารายการจากโน้ตหรือชื่อหมวด</label>
+          <svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="qD" type="search" placeholder="ค้นหาโน้ต/หมวด" autocomplete="off">
+        </div>
+        <div class="chips" role="group" aria-label="ตัวกรองรายการ">
+          <button type="button" class="chip" aria-pressed="true">ทั้งหมด</button>
+          <button type="button" class="chip" data-dir="in" aria-pressed="false">รับ</button>
+          <button type="button" class="chip" data-dir="out" aria-pressed="false">จ่าย</button>
+          <button type="button" class="chip" data-dir="move" aria-pressed="false">โอน</button>
+          <button type="button" class="chip" aria-pressed="false">อาหาร</button>
+          <button type="button" class="chip" aria-pressed="false">ค่าห้อง</button>
+          <button type="button" class="chip" aria-pressed="false">กันยายน</button>
+        </div>
+        <ul class="list">
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-6)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">13 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿185.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--income)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เงินเดือน</span><span class="row-sub">13 ก.ย. · รับ</span></span>
+          <span class="amt income">+฿22,500.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-5)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">เดินทาง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿320.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-1)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">12 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿9,100.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-2)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ของใช้</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,240.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-3)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ค่าน้ำค่าไฟ</span><span class="row-sub">11 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿1,900.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--income)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">ขายของ</span><span class="row-sub">10 ก.ย. · รับ</span></span>
+          <span class="amt income">+฿2,000.00</span>
+        </button></li>
+        <li><button type="button" class="row">
+          <span class="dot" style="background:var(--chart-7)" aria-hidden="true"></span>
+          <span class="row-main"><span class="row-title">กาแฟ</span><span class="row-sub">10 ก.ย. · จ่าย</span></span>
+          <span class="amt expense">−฿95.00</span>
+        </button></li>
+        </ul>
+      </div>
+    <nav class="tabbar" aria-label="แท็บหลัก">
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg>หน้าแรก</button>
+      <button type="button" class="tab" aria-current="page"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>รายการ</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>สรุป</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>ตั้งค่า</button>
+    </nav>
+    <button type="button" class="fab" aria-label="เพิ่มรายการ"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </section>
+
+    <!-- จอ 4 · สรุป (§4 S5) -->
+    <section class="screen">
+      <header class="screen-head">
+        <h2 class="screen-title">สรุป</h2>
+        <p class="cap">กันยายน 2569</p>
+      </header>
+      <div class="screen-body">
+        <div class="card">
+          <div class="sec-head"><h3 class="sec-title">รายจ่าย 6 เดือน</h3>
+            <span class="amt">฿69,710.00</span></div>
+          <div class="bars">
+          <div class="bar-col"><span class="bar" style="height:83.6%" role="img" aria-label="เม.ย. รายจ่าย ฿11,240.00"></span><span class="bar-label">เม.ย.</span></div>
+          <div class="bar-col"><span class="bar" style="height:73.3%" role="img" aria-label="พ.ค. รายจ่าย ฿9,860.00"></span><span class="bar-label">พ.ค.</span></div>
+          <div class="bar-col"><span class="bar" style="height:100.0%" role="img" aria-label="มิ.ย. รายจ่าย ฿13,450.00"></span><span class="bar-label">มิ.ย.</span></div>
+          <div class="bar-col"><span class="bar" style="height:74.5%" role="img" aria-label="ก.ค. รายจ่าย ฿10,020.00"></span><span class="bar-label">ก.ค.</span></div>
+          <div class="bar-col"><span class="bar" style="height:91.4%" role="img" aria-label="ส.ค. รายจ่าย ฿12,300.00"></span><span class="bar-label">ส.ค.</span></div>
+          <div class="bar-col"><span class="bar is-current" style="height:95.5%" role="img" aria-label="ก.ย. รายจ่าย ฿12,840.00"></span><span class="bar-label is-current">ก.ย.</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec-head"><h3 class="sec-title">รายจ่ายตามหมวด</h3><span class="amt">฿12,840.00</span></div>
+          <ul class="list">
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-1)" aria-hidden="true"></span><span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">70.9% ของรายจ่าย</span></span><span class="amt">฿9,100.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-3)" aria-hidden="true"></span><span class="row-main"><span class="row-title">ค่าน้ำค่าไฟ</span><span class="row-sub">14.8% ของรายจ่าย</span></span><span class="amt">฿1,900.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-2)" aria-hidden="true"></span><span class="row-main"><span class="row-title">ของใช้</span><span class="row-sub">9.7% ของรายจ่าย</span></span><span class="amt">฿1,240.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-5)" aria-hidden="true"></span><span class="row-main"><span class="row-title">เดินทาง</span><span class="row-sub">2.5% ของรายจ่าย</span></span><span class="amt">฿320.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-6)" aria-hidden="true"></span><span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">1.4% ของรายจ่าย</span></span><span class="amt">฿185.00</span></div></li>
+        <li><div class="bar-row"><span class="dot" style="background:var(--chart-7)" aria-hidden="true"></span><span class="row-main"><span class="row-title">กาแฟ</span><span class="row-sub">0.7% ของรายจ่าย</span></span><span class="amt">฿95.00</span></div></li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="sec-head"><h3 class="sec-title">เทียบงบ</h3><span class="cap">งบเดือนนี้</span></div>
+          <ul class="list">
+        <li><div class="bar-row budget"><span class="row-main"><span class="row-title">อาหาร</span><span class="row-sub">ใช้ไป 3% ของงบเดือนนี้</span></span><span class="amt">฿185.00 / ฿6,000.00</span></div><div class="track" role="img" aria-label="ใช้ไป 3% ของงบ อาหาร"><span class="fill" style="width:3.1%"></span></div><p class="status cap">อยู่ในงบ</p></li>
+        <li><div class="bar-row budget"><span class="row-main"><span class="row-title">ค่าห้อง</span><span class="row-sub">ใช้ไป 96% ของงบเดือนนี้</span></span><span class="amt is-warn">฿9,100.00 / ฿9,500.00</span></div><div class="track" role="img" aria-label="ใช้ไป 96% ของงบ ค่าห้อง"><span class="fill is-warn" style="width:95.8%"></span></div><p class="status cap">⚠ ใกล้เกินงบ</p></li>
+          </ul>
+        </div>
+      </div>
+    <nav class="tabbar" aria-label="แท็บหลัก">
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg>หน้าแรก</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>รายการ</button>
+      <button type="button" class="tab" aria-current="page"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>สรุป</button>
+      <button type="button" class="tab"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>ตั้งค่า</button>
+    </nav>
+    <button type="button" class="fab" aria-label="เพิ่มรายการ"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </section>
+    </div>
+  </section>
+</main>
+
+<script>
+/* JS มีแค่ 2 อย่าง: สลับธีมที่ <html> และกดสลับชิปให้เห็นสถานะ active (ไม่มี routing/state/fetch/ไลบรารี) */
+document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('#themeToggle');
+  if (toggle) {
+    const on = document.documentElement.classList.toggle('dark');
+    toggle.setAttribute('aria-pressed', String(on));
+    return;
+  }
+  const chip = e.target.closest('.chips .chip');
+  if (chip && !chip.hasAttribute('disabled')) {
+    chip.closest('.chips').querySelectorAll('.chip').forEach((b) => {
+      if (b !== chip) b.setAttribute('aria-pressed', 'false');
+    });
+    chip.setAttribute('aria-pressed', chip.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+  }
+});
+</script>
+</body>
+</html>
