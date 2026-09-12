@@ -156,4 +156,22 @@ create index "transactions_user_kind_time_idx" on "transactions" ("user_id", "ki
   include ("amount") where "deleted_at" is null;--> statement-breakpoint
 drop index if exists "transactions_user_category_time_idx";--> statement-breakpoint
 create index "transactions_user_category_time_idx" on "transactions" ("user_id", "category_id", "occurred_at")
-  include ("amount") where "deleted_at" is null;
+  include ("amount") where "deleted_at" is null;--> statement-breakpoint
+-- ---------------------------------------------------------------------------
+-- เติมมือ (drizzle เขียน trigger ไม่ได้ · เทียบ docs/schema.sql บรรทัด 275-286)
+-- updated_at อัตโนมัติสำหรับ 4 ตารางของแอป — schema.sql เลือก trigger แทน $onUpdate()
+-- เพราะไม่ต้องพึ่งวินัยของทุก write path (raw SQL/psql ก็ถูกต้อง)
+-- 4 ตารางของ Better Auth ไม่มี trigger โดยตั้งใจ (ตัวไลบรารีเขียน updated_at เอง)
+-- ห้ามลบ: drizzle-kit ไม่ rewrite ไฟล์ migration เก่า (generate รอบหน้าไม่แตะไฟล์นี้)
+-- ---------------------------------------------------------------------------
+create or replace function jodjai_touch_updated_at() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;--> statement-breakpoint
+create trigger accounts_touch     before update on "accounts"     for each row execute function jodjai_touch_updated_at();--> statement-breakpoint
+create trigger categories_touch   before update on "categories"   for each row execute function jodjai_touch_updated_at();--> statement-breakpoint
+create trigger transactions_touch before update on "transactions" for each row execute function jodjai_touch_updated_at();--> statement-breakpoint
+create trigger budgets_touch      before update on "budgets"      for each row execute function jodjai_touch_updated_at();
