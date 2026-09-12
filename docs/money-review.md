@@ -111,7 +111,25 @@ if (!Number.isSafeInteger(income) || !Number.isSafeInteger(expense)) {
   เทสต์ใช้ regex หลวม (`/2,500\.00/`, `/^[-−]/`) ไม่ผูกกับ ICU version → ทนกว่า assert สตริงเต็ม ✓
 - `Number.isInteger` → **`Number.isSafeInteger`** (ตามข้อ 4): `1e16` ยังเป็น integer จึงผ่าน guard ปัจจุบันได้
 - ข้อควรรู้ฝั่ง caller (ไม่ใช่บั๊ก): driver คืน `bigint`/`numeric` เป็น **string** — ถ้าส่ง `"250000"` เข้ามา
-  guard จะ throw (fail-loud ✓) เพราะฉะนั้นชั้น map ต้อง `Number()` หรือ drizzle `{ mode: "number" }` ให้เสร็จ
+  **throw ยกเว้น `accountBalance` เมื่อ `initialBalance != 0`** (fail-loud ไม่สม่ำเสมอ — verifier พบในรอบ 2)
+  เพราะฉะนั้นชั้น map ต้อง `Number()` หรือ drizzle `{ mode: "number" }` ให้เสร็จ **ก่อน**เรียกฟังก์ชันเหล่านี้
+- **ผลของ verifier (reviewer reproduce ซ้ำแล้วบน blob `7cd6f84` md5 `0aff4c77…` · วิธี: `git show 7cd6f84:src/lib/money.ts > /tmp/x.ts` แล้ว import ไฟล์นั้น):**
+  `amount` เป็นสตริง → `periodTotals` และ `formatSatang` throw ✓ · `accountBalance([income เดี่ยว], A, 100)` → `RangeError` ✓
+  · **แต่มีเคสที่ได้เลขผิดแบบเงียบ ๆ** เมื่อมีแถว income (ใช้ `+=`) นำหน้า แล้วมี `-=` ตามหลัง:
+
+  ```ts
+  rows = [{ kind: "income",  amount: "2450000", accountId: A },
+          { kind: "expense", amount: "1284000", accountId: A }]
+
+  accountBalance(rows, "A", 100) → 1001166000   // ถูก = 1166100 → เพี้ยน 999,999,900 สตางค์ (≈ 10 ล้านบาท) · ไม่ throw
+  accountBalance(rows, "A", 0)   → 1166000      // บังเอิญถูก (นำ "0" ต่อหน้าไม่เปลี่ยนค่าที่ coerce ได้)
+  periodTotals(rows)             → RangeError   // จับได้
+  ```
+
+  กลไก: `'100' + '2450000'` = `"1002450000"` (ต่อสตริง) → `- '1284000'` บังคับกลับเป็น number → guard ยอดสุดท้าย
+  เห็นเลขที่ "ดูปกติและอยู่ในช่วง safe integer" จึงปล่อยผ่าน · ต้องมี income ก่อนจึงจะเกิด (แถว expense เดี่ยว ๆ
+  ไม่ต่อสตริง = ไม่ reproduce) → ข้อความเดิมในบรรทัดนี้จึงแก้เป็น "throw ยกเว้น `accountBalance` เมื่อ `initialBalance != 0`"
+  (working tree หลังรีวิวรอบ 2 มี `toSatang()` ตรวจ `amount` ต่อแถวแล้ว md5 `34e256ab…` — ยังไม่ commit จึงไม่รีวิวในรอบนี้)
 
 ## 6) เทสต์ครอบเคสที่ควร fail พอไหม — พอ (หลักฐานเชิงกลไก)
 
