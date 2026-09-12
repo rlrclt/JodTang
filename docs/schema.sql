@@ -215,9 +215,14 @@ create index transactions_user_recent_idx
   on transactions (user_id, occurred_at desc, id desc)
   where deleted_at is null;
 
--- หน้าสรุป/เทียบงบ: ตัดเดือนด้วย equality ที่งวดเดือนไทย (occurred_month_bkk = date '2026-09-01')
+-- หน้าสรุป/เทียบงบ + ยอดเดือนนี้แยก kind: ตัดเดือนด้วย equality ที่งวดเดือนไทย (occurred_month_bkk = date '2026-09-01')
+-- include (amount, kind) ทำให้ sum(amount) group by kind เป็น index-only scan ไม่ต้องแตะ heap
+-- (วัดจริงรอบ 2: Index Only Scan · Heap Fetches 0 · buffers 1 เทียบกับ 9 เดิม — minor 7.1)
+-- ไม่ตัด transactions_user_kind_time_idx ในรอบนี้: รอวัดหน้าจริงก่อนว่ามี query ที่กรองช่วง occurred_at
+-- ที่ไม่ตรงงวดเดือนอยู่หรือไม่ (ถ้าไม่มี จึงค่อยตัด = index บน transactions ลดจาก 6 เหลือ 5)
 create index transactions_user_month_idx
   on transactions (user_id, occurred_month_bkk)
+  include (amount, kind)
   where deleted_at is null;
 
 -- ยอดเดือนนี้แยกตาม kind + แนวโน้ม 6 เดือน: sum(amount) group by kind, ช่วง occurred_at
@@ -287,13 +292,15 @@ create trigger budgets_touch      before update on budgets      for each row exe
 
 -- ---------------------------------------------------------------------------
 -- v2 เปลี่ยนอะไรจาก v1 (ตรวจกับ docs/schema-review.md ได้)
---   major 3.1 (ข) เกิดงวดเดือนไทยที่ DB: transactions.occurred_month_bkk (generated stored) + index (user_id, occurred_month_bkk)
---   major 2.x      currency ล็อก 'THB' ด้วย check ทั้ง accounts/transactions/budgets
+--   major 3.1 (ข) เกิดงวดเดือนไทยที่ DB: transactions.occurred_month_bkk (generated stored) + index (user_id, occurred_month_bkk) include (amount, kind)
+--   major 1.1      currency ล็อก 'THB' ด้วย check ทั้ง accounts/transactions/budgets
 --   major 6.1      user.email บังคับ lower(btrim(email))
---   minor 1.1      initial_balance มีเพดาน ±1e15 เหมือน amount
---   minor 1.2      แก้คอมเมนต์ 1e15 สตางค์ = 10 ล้านล้านบาท (เดิมเขียน 1 หมื่นล้าน — ผิด 1000 เท่า)
+--   minor 1.2      initial_balance มีเพดาน ±1e15 เหมือน amount
+--   minor 1.3      แก้คอมเมนต์ 1e15 สตางค์ = 10 ล้านล้านบาท (เดิมเขียน 1 หมื่นล้าน — ผิด 1000 เท่า)
 --   minor 4.1      ถอด partial predicate จาก transactions_account_idx / transactions_to_account_idx (FK ใช้ partial ไม่ได้)
---   minor 4.3      check btrim(name) <> '' ที่ accounts/categories + แก้คอมเมนต์ที่อ้างว่า FK ต้องตรง "ลำดับ" (ไม่จริง)
+--   minor 4.3      check btrim(name) <> '' ที่ accounts/categories
+--   minor 4.5      แก้คอมเมนต์ที่อ้างว่า composite FK ต้องตรง "ลำดับ" คอลัมน์ (ไม่จริง — PG เทียบเป็นชุด + จำนวนต้องเท่า)
+--   minor 7.1      เพิ่ม include (amount, kind) ให้ transactions_user_month_idx → ยอดเดือน/แนวโน้ม 6 เดือนเป็น index-only scan
 --   ไม่ทำ (ตกลงกับ lead): 4.2 budgets expense-only (ต้องแก้ FK + ลบ unique (id,user_id) พร้อมกัน) · 4.4 index หน้ากระเป๋า (รอวัดข้อมูลจริง)
 --   ยังไม่ทำ (ไม่มีโค้ด): 6.2 diff กับ `npx @better-auth/cli generate` — ต้องรันก่อน migrate จริงในเฟส 1
 
