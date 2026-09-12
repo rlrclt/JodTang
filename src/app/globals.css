@@ -16,7 +16,11 @@
   --color-balance: var(--balance);
   --color-warn: var(--warn);
   --font-sans: var(--font-thai);
+  /* radius ตาม §1.4 — ประกาศที่นี่เพื่อให้ได้ utility ชื่อ rounded-card/btn/sheet
+     (rounded-sm ของ Tailwind ยังเป็น 4px ของตัวเอง จึงใช้ rounded-[8px] ตรง ๆ สำหรับ radius 8) */
   --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-sheet: 20px;
 }
 
 /* ค่าโทเคนทั้งหมดคัดจาก docs/design.md §1.1 — ค่าโหมดมืดทับเฉพาะสี (แบบเดียวกับ docs/theme-preview.html) */
@@ -81,6 +85,17 @@ body {
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+/* §5: ทุก element ที่โฟกัสได้ต้องเห็นวงแหวนบนพื้นทั้งสองโหมด */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ตัวเลขเงิน: tabular ทุกที่ (design §1.2) — ใช้คู่กับ text-right */
+.num {
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   accountBalance,
+  expenseByCategory,
   formatRowAmount,
   formatSatang,
   isCounted,
@@ -122,6 +123,27 @@ test("ยอดคงเหลือตรงเป๊ะทีละตัว�
   assert.equal(accountBalance(ROWS, A), 110_000);
   assert.equal(accountBalance(ROWS, B), 100_000);
   assert.equal(accountBalance(ROWS, A, 1_000) + accountBalance(ROWS, B), 211_000);
+});
+
+test("expenseByCategory: ไม่นับ transfer/แถวที่ลบ และรวมยอดตรงกับ periodTotals", () => {
+  const rows = [
+    { kind: "expense", amount: 100, accountId: A, categoryId: "food", deletedAt: null },
+    { kind: "expense", amount: 250, accountId: A, categoryId: "food", deletedAt: null },
+    { kind: "expense", amount: 900, accountId: A, categoryId: "rent", deletedAt: null },
+    { kind: "transfer", amount: 500, accountId: A, toAccountId: B, categoryId: null, deletedAt: null },
+    { kind: "income", amount: 700, accountId: A, categoryId: "salary", deletedAt: null },
+    { kind: "expense", amount: 999, accountId: A, categoryId: "food", deletedAt: new Date() },
+  ] as unknown as MoneyRow[];
+  const byCat = expenseByCategory(rows);
+  assert.equal(byCat.get("food"), 350); // ไม่รวม 999 ที่ถูกลบ
+  assert.equal(byCat.get("rent"), 900);
+  assert.equal(byCat.has("salary"), false); // income ไม่เข้า
+  assert.equal([...byCat.values()].reduce((a, b) => a + b, 0), periodTotals(rows).expense);
+  // รายจ่ายที่ไม่มีหมวด = ข้อมูลเพี้ยน ต้องล้ม ไม่ใช่รวมเข้าไปเงียบ ๆ
+  assert.throws(
+    () => expenseByCategory([{ kind: "expense", amount: 10, accountId: A, deletedAt: null } as unknown as MoneyRow]),
+    Error,
+  );
 });
 
 /* ---- เคสที่ verifier เจอ: เงินเป็น string แล้วต่อกันเงียบ ๆ (ยอดผิดแต่ไม่มี error) ---- */

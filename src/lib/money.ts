@@ -31,6 +31,8 @@ export type MoneyRow = {
   amount: number;
   accountId: string;
   toAccountId?: string | null;
+  /** หมวด (income/expense ต้องมี — DB บังคับด้วย transactions_shape_ck · transfer ต้องเป็น null) */
+  categoryId?: string | null;
   /** null/undefined = ยังไม่ถูกลบ */
   deletedAt?: Date | string | null;
 };
@@ -83,6 +85,27 @@ export function periodTotals(rows: readonly MoneyRow[]): Totals {
     );
   }
   return { income, expense, balance: income - expense };
+}
+
+/**
+ * ยอดรายจ่ายแยกตามหมวด (กราฟสรุป §4 S5) — ใช้กติกาเดียวกับ periodTotals
+ * (ไม่นับ transfer · ไม่นับแถวที่ลบแล้ว · ยอดต้องอยู่ในช่วง safe integer)
+ * แถว expense ที่ไม่มี categoryId = ข้อมูลเพี้ยน (DB บังคับด้วย transactions_shape_ck) → ล้มเสียงดัง
+ */
+export function expenseByCategory(rows: readonly MoneyRow[]): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    if (!isCounted(row) || row.kind !== "expense") continue;
+    if (!row.categoryId) {
+      throw new Error("รายจ่ายต้องมี categoryId (ฝั่ง DB บังคับด้วย transactions_shape_ck)");
+    }
+    const next = (totals.get(row.categoryId) ?? 0) + toSatang(row.amount, "amount ของแถว");
+    if (!Number.isSafeInteger(next)) {
+      throw new RangeError(`ยอดหมวด ${row.categoryId} หลุดช่วง safe integer (${next})`);
+    }
+    totals.set(row.categoryId, next);
+  }
+  return totals;
 }
 
 /** ยอดคงเหลือของกระเป๋าเดียว = initial + income − expense ± transfer */
