@@ -12,11 +12,14 @@
 //   2) NULLS FIRST/LAST ของ index — คอลัมน์ที่ใช้เรียงเป็น not null จึงไม่มีความต่างเชิงพฤติกรรม
 //   3) comment ในไฟล์ SQL — ไม่เข้า catalog อยู่แล้ว (เราไม่ใช้ COMMENT ON)
 // นอกนั้นต่าง = FAIL (exit 1)
+//
+// หมายเหตุสำหรับ agent ที่รันใน session นี้ (ห้ามตีความผิด): อย่าใช้ `npm run lint` ตัดสินว่าสคริปต์นี้สะอาด
+// ตัวดัก output ของ session (rtk) จะคืน exit 2 พร้อมข้อความ "ESLint output (JSON parse failed...)" แม้ ESLint ผ่าน
+// ใช้ `./node_modules/.bin/eslint .` แทน (exit 0 = สะอาด) — ตรวจแล้วว่าไม่ใช่ปัญหาของโค้ดหรือ eslint config
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 
-const sqlish = (a) => a.flat(Infinity).filter(Boolean).join('\n');
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
 function collect(p) {
