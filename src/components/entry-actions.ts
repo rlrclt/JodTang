@@ -2,13 +2,14 @@
 
 import { revalidatePath } from 'next/cache';
 
-import type { EntryCategory, EntryKind, EntryOptions } from '@/components/entry-view';
+import { type EntryCategory, type EntryKind, type EntryOptions, SETUP_CATEGORIES } from '@/components/entry-view';
 import { getDb } from '@/db';
 import { ValidationError } from '@/db/errors';
 import { addAccount } from '@/db/mutations/accounts';
 import { addCategory } from '@/db/mutations/categories';
 import { addTransaction } from '@/db/mutations/transactions';
 import { lastUsedAccountId, listAccounts } from '@/db/queries/accounts';
+import { firstRunState } from '@/db/queries/user-state';
 import { listCategories, suggestedCategoryId, type CategoryRow } from '@/db/queries/categories';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
@@ -140,5 +141,68 @@ export async function createEntryCategoryAction(input: {
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
     return { ok: false, message: userMessage(error, 'สร้างหมวดไม่สำเร็จ ลองใหม่', 'มีชื่อนี้อยู่แล้วในหมวดที่ใช้งาน') };
+  }
+}
+
+export type SetupResult =
+  | { ok: true; created: { accounts: number; categories: number }; message: string }
+  | { ok: false; message: string };
+
+/**
+ * "เริ่มใช้งานเร็ว" — สร้างกระเป๋า "เงินสด" + 5 หมวด (ชื่อ/สีจาก SETUP_CATEGORIES — ชื่อชุดเดิมของแอป)
+ *
+ * ทนกดซ้ำ/กดครึ่งทาง:
+ *   1. เช็ค `firstRunState` ฝั่ง server ก่อนเสมอ — ไม่ใช่ผู้ใช้ใหม่ = ไม่สร้างอะไรเลย
+ *   2. 23505 ต่อรายการ = "มีอยู่แล้ว" → ข้ามตัวนั้น ทำตัวถัดไปต่อ (ไม่ล้มทั้งชุด) ⇒ กดซ้ำได้ไม่มีแถวซ้ำ
+ *   3. error อื่น (DB ล่ม/เน็ตขาด) = ล้มทั้งชุด คืน ok:false ให้การ์ดโชว์ปุ่มลองใหม่
+ */
+export async function setupDefaultsAction(): Promise<SetupResult> {
+  try {
+    const session = await getSession();
+    if (!session) return { ok: false, message: SIGNED_OUT };
+
+    const db = getDb();
+    const fresh = await firstRunState(db, session.userId);
+    if (fresh.hasAccounts || fresh.hasCategories || fresh.hasTransactions) {
+      return { ok: true, created: { accounts: 0, categories: 0 }, message: 'มีข้อมูลอยู่แล้ว — ไม่ได้สร้างอะไรเพิ่ม' };
+    }
+
+    let accounts = 0;
+    try {
+      await addAccount(db, session, { name: 'เงินสด', kind: 'cash', initialBalance: 0 });
+      accounts = 1;
+    } catch (error) {
+      if (isNextControlFlow(error)) throw error;
+      if (!isDuplicateName(error)) throw error; // ชื่อซ้ำ = มีอยู่แล้ว ข้ามไป
+    }
+
+    let categories = 0;
+    for (const item of SETUP_CATEGORIES) {
+      try {
+        await addCategory(db, session, { kind: item.kind, name: item.name, color: item.color });
+        categories += 1;
+      } catch (error) {
+        if (isNextControlFlow(error)) throw error;
+        if (!isDuplicateName(error)) throw error;
+      }
+    }
+
+    revalidatePath('/');
+    revalidatePath('/transactions');
+    revalidatePath('/summary');
+    revalidatePath('/settings/accounts');
+    revalidatePath('/settings/categories');
+
+    return {
+      ok: true,
+      created: { accounts, categories },
+      message:
+        accounts + categories === 6
+          ? 'สร้างกระเป๋าเงินสด + 5 หมวดแล้ว'
+          : 'มีอยู่แล้วบางส่วน — ใช้ของเดิมต่อได้เลย',
+    };
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    return { ok: false, message: userMessage(error, 'สร้างค่าเริ่มต้นไม่สำเร็จ ลองใหม่', 'มีข้อมูลนี้อยู่แล้ว') };
   }
 }

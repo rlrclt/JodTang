@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Sans_Thai } from 'next/font/google';
 
 import { AddEntryFab } from '@/components/AddEntrySheet';
+import { Announcer } from '@/components/Announcer';
 import { OfflineBar } from '@/components/Pwa';
 import { TabBar } from '@/components/TabBar';
 
@@ -86,6 +87,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <IconSprite />
+        {/* ช่องประกาศถาวร: อยู่นอกส่วนที่ RSC refresh แทนที่ → screen reader ประกาศทัน (wave13b) */}
+        <Announcer />
         {/* design.md §6: แถบ "ออฟไลน์อยู่" + ลงทะเบียน service worker (บนสุดเพื่อให้เห็นทันทีไม่ต้องเลื่อน) */}
         <OfflineBar />
         {/* max-w 430 + กลางจอ (design §1.3) · padding-bottom เว้นที่ให้แถบแท็บ + safe area (§2) */}

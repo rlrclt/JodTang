@@ -1,10 +1,13 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 
+import { FirstRunCard, FirstRunCardSkeleton } from '@/components/FirstRunCard';
 import { TransactionList, dayLabel, type TransactionRowView } from '@/components/TransactionRow';
 import { LoadFailed } from '@/components/LoadFailed';
 import { getDb } from '@/db';
 import { listCategoriesById } from '@/db/queries/categories';
 import { listTransactionPage, monthTotals } from '@/db/queries/transactions';
+import { firstRunState } from '@/db/queries/user-state';
 import { formatMonthLabelTh, periodMonthFromParam, shiftPeriodMonth } from '@/lib/month';
 import { withMonth } from '@/lib/month-url';
 import { formatRowAmount, formatSatang } from '@/lib/money';
@@ -13,6 +16,25 @@ import { gateSession } from '@/lib/session';
 
 /** จำนวนแถวล่าสุดในหน้าแรก (design.md §4 S2) */
 const RECENT_LIMIT = 20;
+
+/**
+ * การ์ด "เริ่มใช้งานเร็ว" (wave12 §2) — โหลดเองใน Suspense เพื่อไม่ให้หน้าแรกทั้งหน้าต้องรอ
+ * **fail-closed**: อ่าน `firstRunState` ไม่ได้ = ซ่อนการ์ด (โชว์การ์ดผิดให้คนที่มีข้อมูลแล้วแย่กว่าไม่โชว์)
+ * ตัวอื่นของหน้าแรกไม่กระทบ เพราะความล้มเหลวอยู่แค่ในบล็อกนี้
+ */
+async function FirstRunSection({ userId }: { userId: string }) {
+  let state;
+  try {
+    state = await firstRunState(getDb(), userId);
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
+    console.error('[jodjai] อ่าน firstRunState ไม่ได้ — ซ่อนการ์ดเริ่มใช้งาน:', error);
+    return null;
+  }
+
+  const isFirstRun = !state.hasAccounts && !state.hasCategories && !state.hasTransactions;
+  return isFirstRun ? <FirstRunCard /> : null;
+}
 
 /**
  * S2 หน้าแรก (design.md §4 S2) + §1.3/§2 — ข้อมูลจริงจาก DB ของผู้ใช้ใน session
@@ -85,6 +107,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           ›
         </Link>
       </header>
+
+      <Suspense fallback={<FirstRunCardSkeleton />}>
+        <FirstRunSection userId={userId} />
+      </Suspense>
 
       <section
         aria-labelledby="kpi-label"

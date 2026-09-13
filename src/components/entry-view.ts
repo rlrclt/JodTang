@@ -30,6 +30,25 @@ export const SUGGESTED_CATEGORY_NAMES: Record<'income' | 'expense', readonly str
 };
 
 /**
+ * สีตั้งต้นของแต่ละชื่อหมวด (design.md §1.1) — expense ห้ามเฉดเขียว เด็ดขาด
+ * `--chart-4`/`--chart-7` จึงให้ได้เฉพาะฝั่ง income (เงินเดือน/ขายของ)
+ * ชื่อทั้งหมดต้องมาจาก SUGGESTED_CATEGORY_NAMES ชุดเดิมเท่านั้น (ห้ามคิดรายชื่อชุดที่สอง) — มีเทสต์กันไว้
+ */
+const SETUP_COLORS: Record<string, string> = {
+  อาหาร: '--chart-1',
+  เดินทาง: '--chart-2',
+  ของใช้: '--chart-3',
+  เงินเดือน: '--chart-4',
+  ขายของ: '--chart-7',
+};
+
+/** แผน "เริ่มใช้งานเร็ว": 5 หมวด (ชื่อจาก SUGGESTED_CATEGORY_NAMES) + สีตามกติกา §1.1 */
+export const SETUP_CATEGORIES: readonly { kind: 'expense' | 'income'; name: string; color: string | null }[] = [
+  ...SUGGESTED_CATEGORY_NAMES.expense.map((name) => ({ kind: 'expense' as const, name, color: SETUP_COLORS[name] ?? null })),
+  ...SUGGESTED_CATEGORY_NAMES.income.map((name) => ({ kind: 'income' as const, name, color: SETUP_COLORS[name] ?? null })),
+];
+
+/**
  * กระเป๋าเริ่มต้น: ใบที่ใช้ล่าสุด → ใบแรกตาม createdAt
  * (ค่า lastUsed ที่ชี้ไปใบที่ archive/หายไปแล้ว = ใช้ไม่ได้ ต้องตกไปใบแรก — กันเลือกกระเป๋าที่ไม่มีในลิสต์)
  */

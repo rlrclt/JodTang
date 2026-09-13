@@ -7,6 +7,8 @@ import test from 'node:test';
 
 import {
   type EntryOptions,
+  SETUP_CATEGORIES,
+  SUGGESTED_CATEGORY_NAMES,
   canTransferWith,
   defaultAccountId,
   defaultCategoryId,
@@ -92,4 +94,23 @@ test('เหตุผล: รับ/จ่ายต้องมีหมวด (
 test('โอนไม่ต้องมีหมวด (categoryId = null ได้)', () => {
   const reason = entryBlockReason({ kind: 'transfer', amountSatang: 100, accountId: 'a1', toAccountId: 'a2', categoryId: null, accountCount: 2 });
   assert.equal(reason, null);
+});
+
+test('แผนเริ่มใช้งานเร็ว: 5 หมวด ชื่อชุดเดียวกับ SUGGESTED_CATEGORY_NAMES (ไม่คิดชุดที่สอง)', () => {
+  const names = SETUP_CATEGORIES.map((item) => item.name);
+  const expected = [...SUGGESTED_CATEGORY_NAMES.expense, ...SUGGESTED_CATEGORY_NAMES.income];
+  assert.deepEqual(names, expected);
+  assert.equal(SETUP_CATEGORIES.length, 5);
+});
+
+test('แผนเริ่มใช้งานเร็ว: หมวดรายจ่ายห้ามได้เฉดเขียว (--chart-4/--chart-7) — design §1.1', () => {
+  const expense = SETUP_CATEGORIES.filter((item) => item.kind === 'expense');
+  assert.ok(expense.every((item) => item.color !== '--chart-4' && item.color !== '--chart-7'), JSON.stringify(expense));
+  // และต้องมีสีจริงทุกตัว (ไม่ปล่อย null หลุดไป)
+  assert.ok(SETUP_CATEGORIES.every((item) => item.color !== null));
+});
+
+test('แผนเริ่มใช้งานเร็ว: รายรับใช้เฉดเขียวได้ (ตามสเปก wave12 §2)', () => {
+  const income = SETUP_CATEGORIES.filter((item) => item.kind === 'income').map((item) => item.color);
+  assert.deepEqual(income, ['--chart-4', '--chart-7']);
 });
