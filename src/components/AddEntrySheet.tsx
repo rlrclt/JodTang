@@ -63,7 +63,7 @@ export function AddEntryFab() {
         type="button"
         onClick={open}
         aria-label="เพิ่มรายการ"
-        className="fixed bottom-[calc(56px+16px+env(safe-area-inset-bottom))] right-[max(16px,calc(50%-215px+16px))] z-30 flex size-14 items-center justify-center rounded-card bg-[var(--balance)] text-[var(--on-accent)] shadow-[var(--shadow-sticky)] active:scale-[0.98]"
+        className="fixed bottom-[calc(56px+16px+env(safe-area-inset-bottom))] right-[max(16px,calc(50%-215px+16px))] z-30 flex size-14 items-center justify-center rounded-card bg-balance text-on-accent shadow-[var(--shadow-sticky)] active:scale-[0.98]"
       >
         <svg className="size-6" aria-hidden="true">
           <use href="#i-plus" />
@@ -75,7 +75,7 @@ export function AddEntryFab() {
         aria-label="เพิ่มรายการ"
         className="m-0 w-full max-w-[430px] rounded-t-[20px] border-0 bg-surface p-4 pb-[calc(16px+env(safe-area-inset-bottom))] text-text shadow-[var(--shadow-sheet)] backdrop:bg-[rgb(2_6_23_/_0.45)] sm:mx-auto"
       >
-        <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-[999px] bg-[var(--border-strong)]" />
+        <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-pill bg-border-strong" />
 
         <div className="flex flex-wrap gap-2" role="group" aria-label="ประเภทรายการ">
           {KINDS.map((item) => {
@@ -88,7 +88,7 @@ export function AddEntryFab() {
                 onClick={() => setKind(item.id)}
                 className={`min-h-11 rounded-btn border px-4 font-semibold ${
                   active
-                    ? `border-[var(--border-strong)] bg-surface-2 font-bold ${
+                    ? `border-border-strong bg-surface-2 font-bold ${
                         item.id === 'income' ? 'text-income' : item.id === 'expense' ? 'text-expense' : 'text-[var(--balance)]'
                       }`
                     : 'border-border bg-surface text-text'
@@ -104,7 +104,7 @@ export function AddEntryFab() {
           จำนวนเงิน (บาท)
         </label>
         {/* ช่องกรอกจริง (inputmode=decimal) — คีย์แพดของแอปเป็น layer เสริม ไม่ใช่ทางเดียว (§2) */}
-        <div className="mt-1 flex min-h-14 items-center gap-1.5 rounded-[8px] border border-border-strong bg-surface-2 px-3">
+        <div className="mt-1 flex min-h-14 items-center gap-1.5 rounded-input border border-border-strong bg-surface-2 px-3">
           <span aria-hidden="true" className="font-semibold">
             ฿
           </span>
@@ -144,7 +144,7 @@ export function AddEntryFab() {
               type="button"
               onClick={() => press(key)}
               aria-label={key === 'back' ? 'ลบทีละตัว' : key === '.' ? 'จุดทศนิยม' : key}
-              className="flex min-h-14 items-center justify-center rounded-[8px] border border-border bg-surface-2 text-xl font-semibold active:scale-[0.98]"
+              className="flex min-h-14 items-center justify-center rounded-input border border-border bg-surface-2 text-xl font-semibold active:scale-[0.98]"
             >
               {key === 'back' ? (
                 <svg className="size-5" aria-hidden="true">
@@ -177,7 +177,7 @@ export function AddEntryFab() {
             type="button"
             disabled={!canSave || offline}
             onClick={() => dialogRef.current?.close()}
-            className="min-h-14 flex-1 rounded-btn bg-[var(--balance)] font-bold text-[var(--on-accent)] disabled:opacity-40"
+            className="min-h-14 flex-1 rounded-btn bg-balance font-bold text-on-accent disabled:opacity-40"
           >
             บันทึก
           </button>

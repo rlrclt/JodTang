@@ -16,7 +16,7 @@ export default function TransactionsPage() {
         <p className="text-[13px] leading-[18px] text-text-muted">{MONTH_LABEL}</p>
       </header>
 
-      <div className="flex min-h-14 items-center gap-2 rounded-[8px] border border-border-strong bg-surface px-3">
+      <div className="flex min-h-14 items-center gap-2 rounded-input border border-border-strong bg-surface px-3">
         <svg className="size-5 shrink-0 text-text-muted" aria-hidden="true">
           <use href="#i-search" />
         </svg>
@@ -41,7 +41,7 @@ export default function TransactionsPage() {
             aria-pressed={index === 0}
             className={`min-h-11 rounded-btn border px-4 font-semibold ${
               index === 0
-                ? 'border-[var(--border-strong)] bg-surface-2 font-bold'
+                ? 'border-border-strong bg-surface-2 font-bold'
                 : 'border-border bg-surface text-text'
             }`}
           >

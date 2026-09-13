@@ -52,7 +52,7 @@ export function OfflineBar() {
   return (
     <div
       role="status"
-      className="sticky top-0 z-30 flex items-center gap-2 bg-warn px-4 py-2 text-[13px] font-semibold text-[var(--on-accent)]"
+      className="sticky top-0 z-30 flex items-center gap-2 bg-warn px-4 py-2 text-[13px] font-semibold text-on-accent"
     >
       <span aria-hidden="true">●</span>
       ออฟไลน์อยู่ · แสดงข้อมูลที่แคชไว้ · บันทึกรายการใหม่ยังไม่ได้

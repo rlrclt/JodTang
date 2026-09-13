@@ -17,7 +17,7 @@ export function TransactionRow({ txn }: { txn: FixtureTxn }) {
       <button type="button" className="flex min-h-14 w-full items-center gap-3 px-2 text-left">
         <span
           aria-hidden="true"
-          className="size-2.5 shrink-0 rounded-[999px]"
+          className="size-2.5 shrink-0 rounded-pill"
           style={{ background: category ? `var(${category.color})` : 'var(--balance)' }}
         />
         <span className="min-w-0 flex-1">

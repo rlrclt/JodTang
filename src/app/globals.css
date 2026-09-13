@@ -15,12 +15,18 @@
   --color-expense: var(--expense);
   --color-balance: var(--balance);
   --color-warn: var(--warn);
-  --font-sans: var(--font-thai);
-  /* radius ตาม §1.4 — ประกาศที่นี่เพื่อให้ได้ utility ชื่อ rounded-card/btn/sheet
-     (rounded-sm ของ Tailwind ยังเป็น 4px ของตัวเอง จึงใช้ rounded-[8px] ตรง ๆ สำหรับ radius 8) */
+  /* สี 2 ตัวนี้เคยมีค่าแต่ไม่ได้ประกาศในธีม → utility outline-focus/text-on-accent ไม่เกิด */
+  --color-focus: var(--focus);
+  --color-on-accent: var(--on-accent);
+  /* design.md §1.2: ก่อนฟอนต์โหลดเสร็จ (หรือโหลดไม่ได้) ต้องอ่านออก ไม่ใช่ tofu */
+  --font-sans: var(--font-thai), system-ui, "Sarabun", sans-serif;
+  /* radius ตาม §1.4 — ประกาศที่นี่เพื่อให้ได้ utility ชื่อ rounded-card/btn/sheet/input/pill
+     ห้ามตั้งชื่อว่า --radius-sm: ชนกับสเกล default ของ Tailwind (0.25rem) แล้วทับ rounded-sm ทั้งโปรเจกต์ */
   --radius-card: 16px;
   --radius-btn: 12px;
   --radius-sheet: 20px;
+  --radius-input: 8px;
+  --radius-pill: 999px;
 }
 
 /* ค่าโทเคนทั้งหมดคัดจาก docs/design.md §1.1 — ค่าโหมดมืดทับเฉพาะสี (แบบเดียวกับ docs/theme-preview.html) */
@@ -46,10 +52,8 @@
   --chart-6: #0D9488;
   --chart-7: #65A30D;
   --chart-8: #E11D48;
-  --radius-sm: 8px;
   --radius-btn: 12px;
   --radius-sheet: 20px;
-  --radius-pill: 999px;
   --shadow-card: 0 1px 2px rgb(2 6 23 / 0.06);
   --shadow-sheet: 0 -8px 32px rgb(2 6 23 / 0.18);
   --shadow-sticky: 0 4px 12px rgb(2 6 23 / 0.06);

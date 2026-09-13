@@ -19,7 +19,7 @@ export default function HomePage() {
         <button
           type="button"
           aria-label="เดือนก่อนหน้า"
-          className="flex size-11 items-center justify-center rounded-[8px] text-text-muted"
+          className="flex size-11 items-center justify-center rounded-input text-text-muted"
         >
           ‹
         </button>
@@ -27,7 +27,7 @@ export default function HomePage() {
         <button
           type="button"
           aria-label="เดือนถัดไป"
-          className="flex size-11 items-center justify-center rounded-[8px] text-text-muted"
+          className="flex size-11 items-center justify-center rounded-input text-text-muted"
         >
           ›
         </button>

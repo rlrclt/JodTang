@@ -62,7 +62,7 @@ export default function SummaryPage() {
             <li key={category?.id ?? 'unknown'} className="flex min-h-11 items-center gap-3">
               <span
                 aria-hidden="true"
-                className="size-2.5 shrink-0 rounded-[999px]"
+                className="size-2.5 shrink-0 rounded-pill"
                 style={{ background: category ? `var(${category.color})` : 'var(--balance)' }}
               />
               <span className="min-w-0 flex-1">
@@ -105,11 +105,11 @@ export default function SummaryPage() {
                 <div
                   role="img"
                   aria-label={`ใช้ไป ${Math.round(ratio * 100)}% ของงบ ${category?.name ?? ''}`}
-                  className="mt-2 h-2 overflow-hidden rounded-[999px] border border-border bg-surface-2"
+                  className="mt-2 h-2 overflow-hidden rounded-pill border border-border bg-surface-2"
                 >
                   <span
                     style={{ width: `${Math.min(100, ratio * 100)}%` }}
-                    className={`block h-full rounded-[999px] ${warn ? 'bg-warn' : 'bg-[var(--balance)]'}`}
+                    className={`block h-full rounded-pill ${warn ? 'bg-warn' : 'bg-balance'}`}
                   />
                 </div>
                 {/* สถานะต้องมีคำกำกับ ไม่สื่อด้วยสีอย่างเดียว (§1.1) */}
