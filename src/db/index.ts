@@ -2,7 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { drizzle, type NeonHttpDatabase } from 'drizzle-orm/neon-http';
 
 import { getDevDb } from './dev-pglite.ts';
-import * as schema from './schema';
+import * as schema from './schema.ts';
 
 /**
  * ชนิดของ drizzle instance ที่แอปใช้ (neon-http) — ผู้ใช้ส่งเป็นพารามิเตอร์เพื่อให้เทสต์/dev สลับ driver ได้

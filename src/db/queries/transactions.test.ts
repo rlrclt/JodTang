@@ -139,7 +139,7 @@ test('ข) ไม่มีแถว/ยอดข้ามผู้ใช้ห�
 });
 
 test('ค) แถว soft delete ไม่ถูกนับ (แต่ต้องมีอยู่จริงใน DB)', async () => {
-  const raw = await pglite.query(`select count(*)::int as n from transactions where user_id = '${U1}' and deleted_at is not null`);
+  const raw = await pglite.query<{ n: number }>(`select count(*)::int as n from transactions where user_id = '${U1}' and deleted_at is not null`);
   assert.equal(raw.rows[0].n, 1, 'ต้องมีแถวที่ถูกลบอยู่ใน DB ไม่งั้นเทสต์นี้ผ่านแบบหลอก ๆ');
 
   const rows = await monthRows(db, U1, SEPT);
@@ -155,7 +155,7 @@ test('ค) แถว soft delete ไม่ถูกนับ (แต่ต้อ
 });
 
 test('transfer ถูกตัดออกจากรายการรับ/จ่ายของเดือน (แต่ยังอยู่ในตาราง)', async () => {
-  const raw = await pglite.query(`select count(*)::int as n from transactions where user_id = '${U1}' and kind = 'transfer'`);
+  const raw = await pglite.query<{ n: number }>(`select count(*)::int as n from transactions where user_id = '${U1}' and kind = 'transfer'`);
   assert.equal(raw.rows[0].n, 1);
 
   const rows = await monthRows(db, U1, SEPT);
@@ -201,7 +201,7 @@ test('หน้าแรก: เรียงใหม่->เก่า และ
 
   // ไล่จนหมด: ทุกหน้าต่อกันด้วย keyset ต้องได้ครบทุกแถวของผู้ใช้คนนี้ (และไม่ซ้ำ)
   // recentTransactions ไม่กรองเดือน → นับจากตารางจริงของ u1 ที่ยังไม่ถูกลบ (9 ก.ย. + 1 ส.ค. + 1 transfer = 11)
-  const raw = await pglite.query(`select count(*)::int as n from transactions where user_id = '${U1}' and deleted_at is null`);
+  const raw = await pglite.query<{ n: number }>(`select count(*)::int as n from transactions where user_id = '${U1}' and deleted_at is null`);
   const expected = raw.rows[0].n;
   const all = [...page1, ...page2];
   let cursor = { occurredAt: page2[2].occurredAt, id: page2[2].id };
