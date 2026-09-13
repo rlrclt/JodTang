@@ -42,6 +42,16 @@ export function AddEntryFab() {
     if (new URLSearchParams(window.location.search).get('add') === '1') open();
   }, []);
 
+  // ปุ่มที่ไหนก็ได้ในแอปเปิด sheet นี้ได้ด้วย attribute `data-open-add`
+  // (เช่น ปุ่ม "เพิ่มรายการ" ของ empty state ในหน้ารายการ) — ไม่ต้องส่ง handler ข้าม component
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-open-add]')) open();
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, []);
+
   // ใช้ตัวแปลงสตริง→สตางค์ตัวเดียว (ไม่ผ่าน Number(): กัน '8.29' → 828.9999999999999)
   const satang = satangFromInput(amount);
   const empty = satang === null || satang === 0;
