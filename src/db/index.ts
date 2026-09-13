@@ -21,6 +21,9 @@ function build() {
 
 type Db = ReturnType<typeof build>;
 
+/** ชนิดของ drizzle instance ที่แอปใช้ (neon-http) — ผู้ใช้ส่งเป็นพารามิเตอร์เพื่อให้เทสต์สลับ driver ได้ */
+export type { Db };
+
 let cached: Db | undefined;
 
 export function getDb(): Db {
