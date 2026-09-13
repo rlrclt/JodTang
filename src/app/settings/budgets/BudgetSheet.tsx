@@ -20,6 +20,8 @@ export type BudgetItem = {
 
 type Props = {
   item: BudgetItem;
+  /** งวดเดือนที่กำลังดู (`?m`) — ตั้ง/แก้งบของเดือนนี้เท่านั้น */
+  periodMonth: string;
   periodLabel: string;
   /**
    * ยิง optimistic ก่อนรอเซิร์ฟเวอร์ — คืนฟังก์ชันสำหรับ rollback ค่าเดิม
@@ -37,7 +39,7 @@ type Props = {
  * - ใช้ <AmountKeypad> ร่วม (implementation เดียวกับ sheet เพิ่มรายการ)
  * - บันทึกพลาด: rollback แถว + **ไม่ปิด sheet** + เก็บค่าที่กรอกไว้ + บอกข้อความไทย (ห้ามรหัส DB)
  */
-export function BudgetSheet({ item, periodLabel, onOptimistic, onDone, onClose }: Props) {
+export function BudgetSheet({ item, periodMonth, periodLabel, onOptimistic, onDone, onClose }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [amount, setAmount] = useState(item.amount === null ? '' : inputFromSatang(item.amount));
@@ -85,7 +87,7 @@ export function BudgetSheet({ item, periodLabel, onOptimistic, onDone, onClose }
 
   const save = () => {
     if (!canSave) return;
-    runWrite('save', satang, () => saveBudgetAction(item.categoryId, satang));
+    runWrite('save', satang, () => saveBudgetAction(item.categoryId, satang, periodMonth));
   };
 
   const clear = () => {
@@ -128,7 +130,7 @@ export function BudgetSheet({ item, periodLabel, onOptimistic, onDone, onClose }
 
       <AmountKeypad
         id="budget-amount"
-        label={`งบของเดือนนี้ (บาท) — ${periodLabel}`}
+        label={`งบของ ${periodLabel} (บาท)`}
         value={amount}
         onChange={setAmount}
         inputRef={inputRef}

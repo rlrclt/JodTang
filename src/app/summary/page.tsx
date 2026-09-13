@@ -10,6 +10,7 @@ import { listBudgetProgress } from '@/db/queries/budgets';
 import { listCategoriesById } from '@/db/queries/categories';
 import { monthExpenseByCategory, trendByMonth, type MonthTrend } from '@/db/queries/transactions';
 import { type PeriodMonth, formatMonthLabelTh, periodMonthFromParam } from '@/lib/month';
+import { withMonth } from '@/lib/month-url';
 import { formatSatang } from '@/lib/money';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { gateSession } from '@/lib/session';
@@ -66,8 +67,12 @@ async function BudgetSection({ userId, periodMonth }: { userId: string; periodMo
   if (rows.length === 0) {
     return (
       <div className="mt-1 flex flex-col gap-1">
-        <p className="text-text-muted">เดือนนี้ยังไม่ได้ตั้งงบ</p>
-        <Link href="/settings/budgets" className="flex min-h-11 items-center font-semibold text-[var(--balance)]">
+        <p className="text-text-muted">ยังไม่ได้ตั้งงบของเดือนนี้</p>
+        {/* พาเดือนที่กำลังดูอยู่ไปด้วย — ตั้งงบของเดือนนั้นได้ทันที ไม่ต้องสลับซ้ำ (spec §2) */}
+        <Link
+          href={withMonth('/settings/budgets', periodMonth)}
+          className="flex min-h-11 items-center font-semibold text-[var(--balance)]"
+        >
           ไปตั้งงบที่หน้าตั้งค่า ›
         </Link>
       </div>

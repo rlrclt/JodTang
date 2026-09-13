@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getDb } from '@/db';
 import { ValidationError } from '@/db/errors';
 import { deleteBudget, setBudget } from '@/db/mutations/budgets';
-import { periodMonthOfBkk } from '@/lib/month';
+import { periodMonthFromParam } from '@/lib/month';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
 
@@ -25,17 +25,22 @@ function userMessage(error: unknown, fallback: string): string {
 }
 
 /**
- * ตั้ง/แก้งบของเดือนปัจจุบัน — userId มาจาก session เท่านั้น ไม่รับจาก client
- * periodMonth ตรึงที่เดือนปัจจุบันเพราะทั้งแอปยังสลับเดือนไม่ได้ (ข้อเสนอ §2) — signature ของ mutation รับเดือนอยู่แล้ว
+ * ตั้ง/แก้งบของ "เดือนที่เลือก" — userId มาจาก session เท่านั้น
+ * `periodMonth` มาจาก URL ของหน้า (`?m`) ผ่าน client — ตรวจรูปแบบด้วย `periodMonthFromParam` ที่ไม่ throw
+ * (ค่าที่ผิดรูปกลายเป็นเดือนปัจจุบัน ไม่ใช่ทั้ง action ล้ม) · ชั้นข้อมูลยังบังคับวันแรกของเดือนซ้ำอีกชั้น
  *
  * ใช้ getSession() ไม่ใช่ requireSession(): ใน server action `redirect()` โยน error พิเศษออกมา
  * ถ้าให้อยู่ใน try/catch จะถูกกลืนกลายเป็น "บันทึกไม่สำเร็จ" เงียบ ๆ · ทุกอย่างในนี้ต้องคืน ok:false ไม่ throw
  */
-export async function saveBudgetAction(categoryId: string, amount: number): Promise<BudgetResult> {
+export async function saveBudgetAction(
+  categoryId: string,
+  amount: number,
+  periodMonth: string,
+): Promise<BudgetResult> {
   try {
     const session = await getSession();
     if (!session) return { ok: false, message: SIGNED_OUT };
-    await setBudget(getDb(), session, { categoryId, periodMonth: periodMonthOfBkk(), amount });
+    await setBudget(getDb(), session, { categoryId, periodMonth: periodMonthFromParam(periodMonth), amount });
     revalidatePath('/settings/budgets');
     revalidatePath('/summary');
     return { ok: true };

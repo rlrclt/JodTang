@@ -4,6 +4,7 @@ import { SignOutButton } from '@/components/AuthButtons';
 import { LoadFailed } from '@/components/LoadFailed';
 import { InstallApp } from '@/components/Pwa';
 import { formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
+import { withMonth } from '@/lib/month-url';
 import { gateSession } from '@/lib/session';
 
 // design.md §3 แท็บ 4 (ตั้งค่า) — บัญชี/ออกจากระบบ + งบประมาณ ทำงานจริงแล้ว ส่วนที่เหลือยังเป็นโครง
@@ -60,7 +61,10 @@ export default async function SettingsPage() {
         </li>
         {/* ตั้งงบต่อหมวด — หน้าที่ทำงานจริงแล้ว (ข้อเสนอ §2) */}
         <li className="border-b border-border">
-          <Link href="/settings/budgets" className="flex min-h-14 items-center justify-between gap-3 px-4">
+          <Link
+            href={withMonth('/settings/budgets', periodMonthOfBkk())}
+            className="flex min-h-14 items-center justify-between gap-3 px-4"
+          >
             <span>งบประมาณ</span>
             <span className="flex items-center gap-1 text-[13px] text-text-muted">
               ตั้งงบต่อหมวด

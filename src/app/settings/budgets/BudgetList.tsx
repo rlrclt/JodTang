@@ -13,7 +13,16 @@ import { BudgetSheet, type BudgetItem } from './BudgetSheet';
  * - optimistic: แถวขยับทันทีที่กดบันทึก · พลาด → rollback แล้วคืนค่าเดิมในช่องกรอก (BudgetSheet)
  * - ไม่ reload หน้า: ใช้ router.refresh() ใน transition (design §2)
  */
-export function BudgetList({ items, periodLabel }: { items: BudgetItem[]; periodLabel: string }) {
+export function BudgetList({
+  items,
+  periodMonth,
+  periodLabel,
+}: {
+  items: BudgetItem[];
+  /** งวดเดือนที่กำลังดู (`?m`) — ส่งต่อให้ sheet เพื่อตั้งงบของเดือนนั้นจริง */
+  periodMonth: string;
+  periodLabel: string;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [editing, setEditing] = useState<BudgetItem | null>(null);
@@ -101,6 +110,7 @@ export function BudgetList({ items, periodLabel }: { items: BudgetItem[]; period
       {editing ? (
         <BudgetSheet
           item={editing}
+          periodMonth={periodMonth}
           periodLabel={periodLabel}
           onOptimistic={optimistic}
           onDone={done}

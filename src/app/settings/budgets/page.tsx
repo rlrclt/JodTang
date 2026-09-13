@@ -1,11 +1,12 @@
 import Link from 'next/link';
 
 import { LoadFailed } from '@/components/LoadFailed';
+import { MonthSwitcher } from '@/components/MonthSwitcher';
 import { RetryBar } from '@/components/RetryBar';
 import { getDb } from '@/db';
 import { listBudgetProgress } from '@/db/queries/budgets';
 import { listCategories } from '@/db/queries/categories';
-import { formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
+import { formatMonthLabelTh, periodMonthFromParam } from '@/lib/month';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { gateSession } from '@/lib/session';
 
@@ -15,15 +16,16 @@ import { BudgetList } from './BudgetList';
 export const metadata = { title: 'งบประมาณ · จดจ่าย' };
 
 /**
- * ตั้งงบต่อหมวด (ข้อเสนอ §2) — เดือนปัจจุบัน (Asia/Bangkok) เท่านั้น เพราะทั้งแอปยังสลับเดือนไม่ได้
+ * ตั้งงบต่อหมวด (ข้อเสนอ §2) — **เดือนที่เลือกจาก `?m`** (เหมือน /transactions และ /summary)
+ * `periodMonthFromParam` ไม่ throw: ค่าจาก URL เพี้ยน = เดือนปัจจุบัน (หน้าไม่ 500 — spec §1)
  * รวม 2 แหล่ง: หมวดรายจ่ายที่ยังใช้อยู่ทั้งหมด (ตั้งได้) + งบของหมวดที่ถูก archive ไปแล้ว (ต้องเห็น ไม่ซ่อน)
  */
-export default async function BudgetsPage() {
+export default async function BudgetsPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const gate = await gateSession();
   if (gate.unavailable) return <LoadFailed />;
   const { userId } = gate.user;
   const db = getDb();
-  const periodMonth = periodMonthOfBkk();
+  const periodMonth = periodMonthFromParam((await searchParams).m);
   const periodLabel = formatMonthLabelTh(periodMonth);
 
   let items: BudgetItem[] | null = null;
@@ -76,14 +78,20 @@ export default async function BudgetsPage() {
         <h1 className="text-2xl font-semibold">งบประมาณ</h1>
       </header>
 
+      <MonthSwitcher basePath="/settings/budgets" periodMonth={periodMonth} />
+
       <p className="text-[13px] leading-[18px] text-text-muted">
-        งบของ {periodLabel} · ตั้งเป็นรายเดือน ต่อหมวด · เดือนถัดไปต้องตั้งใหม่ (ไม่พกยอดที่เหลือ)
+        งบเป็นรายเดือน ต่อหมวด · ตั้งล่วงหน้า/ย้อนหลังได้ · เดือนใหม่ต้องตั้งใหม่ (ไม่พกยอดที่เหลือ)
       </p>
 
-      {items ? <BudgetList items={items} periodLabel={periodLabel} /> : <RetryBar message="โหลดงบไม่สำเร็จ" />}
+      {items ? (
+        <BudgetList items={items} periodMonth={periodMonth} periodLabel={periodLabel} />
+      ) : (
+        <RetryBar message="โหลดงบไม่สำเร็จ" />
+      )}
 
       <p className="text-[13px] leading-[18px] text-text-muted">
-        ยอดที่ใช้ไปคิดจากรายการจริงของเดือนนี้ และดูได้ที่หน้าสรุป
+        ยอดที่ใช้ไปคิดจากรายการจริงของเดือนที่เลือก และดูได้ที่หน้าสรุป
       </p>
     </div>
   );
