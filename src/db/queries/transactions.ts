@@ -18,11 +18,12 @@ import {
   type Totals,
   type TxnKind,
 } from '../../lib/money.ts';
+import type { PeriodMonth } from '../../lib/month.ts';
 import type { Db } from '../index.ts';
 import { transactions } from '../schema.ts';
 
-/** 'YYYY-MM-01' ของเดือนไทย — เทียบ equality กับ transactions.occurred_month_bkk (generated stored) */
-export type PeriodMonth = string;
+/** งวดเดือนไทย ('YYYY-MM-01') — นิยามจริงอยู่ที่ src/lib/month.ts (ที่เดียวที่คิดเดือน) ส่งต่อเพื่อไม่ให้มี 2 นิยาม */
+export type { PeriodMonth };
 
 /** คอลัมน์มาตรฐานของแถวรายการ — ใช้ร่วมกับ write path (src/db/mutations) */
 export const TXN_COLUMNS = {
