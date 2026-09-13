@@ -29,7 +29,7 @@
   /* §1.2 ฟอนต์ */
   --font-sans:"IBM Plex Sans Thai", system-ui, "Sarabun", sans-serif;
   /* §1.4 radius */
-  --radius-sm:8px; --radius-btn:12px; --radius-card:16px; --radius-sheet:20px; --radius-pill:999px;
+  --radius-input:8px; --radius-btn:12px; --radius-card:16px; --radius-sheet:20px; --radius-pill:999px;
   /* §1.5 shadow */
   --shadow-card:0 1px 2px rgb(2 6 23 / .06);
   --shadow-sheet:0 -8px 32px rgb(2 6 23 / .18);
@@ -99,7 +99,7 @@ input{font:inherit;color:inherit}
 .screen-title{font-size:var(--fs-h1);line-height:var(--lh-h1);font-weight:600;flex:1}
 .screen-body{flex:1;padding:8px 16px calc(72px + env(safe-area-inset-bottom))}
 .icon-btn{width:var(--tap);height:var(--tap);display:inline-flex;align-items:center;justify-content:center;
-  border-radius:var(--radius-sm);color:var(--text-muted);transition:transform 120ms ease-out}
+  border-radius:var(--radius-input);color:var(--text-muted);transition:transform 120ms ease-out}
 .icon-btn:active{transform:scale(.98)}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px;
   box-shadow:var(--shadow-card);margin-bottom:16px}
@@ -138,7 +138,7 @@ input{font:inherit;color:inherit}
 
 /* ช่องกรอก (§1.4 radius 8, ขอบ --border-strong ให้ผ่าน 3:1) */
 .field{display:flex;align-items:center;gap:6px;min-height:var(--tab-h);padding:0 12px;margin-bottom:8px;
-  border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface-2)}
+  border:1px solid var(--border-strong);border-radius:var(--radius-input);background:var(--surface-2)}
 .field-label{display:block;margin-bottom:4px;font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted)}
 .field input{flex:1;min-width:0;min-height:var(--tap);border:0;background:none;outline-offset:0;
   font-size:var(--fs-h1);font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
@@ -157,7 +157,7 @@ input{font:inherit;color:inherit}
 .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
 .kpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
 .key{min-height:56px;display:flex;align-items:center;justify-content:center;font-size:var(--fs-h2);font-weight:600;
-  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--radius-input);background:var(--surface-2);
   transition:transform 120ms ease-out}                                          /* §2 ปุ่มคีย์แพด >= 56 สูง */
 .key:active{transform:scale(.98)}
 .quick-key{border-radius:var(--radius-btn);font-size:var(--fs-body)}
@@ -169,7 +169,7 @@ input{font:inherit;color:inherit}
 /* กราฟ (div + CSS, ไม่ใช้ gradient/ไลบรารี) */
 .bars{display:flex;align-items:flex-end;gap:8px;height:140px;margin-top:8px}
 .bar-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
-.bar{width:100%;background:var(--expense);border-radius:var(--radius-sm) var(--radius-sm) 0 0;
+.bar{width:100%;background:var(--expense);border-radius:var(--radius-input) var(--radius-input) 0 0;
   border:1px solid var(--expense)}
 .bar-label{font-size:var(--fs-cap);line-height:var(--lh-cap);color:var(--text-muted)}
 .bar-label.is-current{color:var(--text);font-weight:600}
