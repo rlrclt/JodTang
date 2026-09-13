@@ -73,7 +73,7 @@ export function validateTransaction(input: unknown): ValidTransaction {
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_KEYS.includes(key)) {
-      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} (userId มาจาก session เท่านั้น)`);
+      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} จาก input`);
     }
   }
 

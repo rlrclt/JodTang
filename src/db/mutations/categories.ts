@@ -27,7 +27,7 @@ import {
 import { categories } from '../schema.ts';
 import type { Session } from '../session.ts';
 
-/** ฟิลด์ที่ยอมรับจาก input — ที่ไม่อยู่ในลิสต์ (userId, id, kind ตอนแก้, archivedAt) = ปฏิเสธ */
+/** ฟิลด์ที่ยอมรับจาก input — ที่เหลือ (userId, id, archivedAt, kind ตอนแก้) ระบบกำหนดเอง = ปฏิเสธ */
 const ALLOWED_KEYS: readonly string[] = ['kind', 'name', 'icon', 'color', 'sortOrder'];
 
 export type ValidCategory = {
@@ -59,7 +59,7 @@ export function validateCategory(input: unknown): ValidCategory {
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_KEYS.includes(key)) {
-      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} (userId มาจาก session เท่านั้น)`);
+      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} จาก input`);
     }
   }
 

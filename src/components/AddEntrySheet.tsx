@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { useOffline } from '@/components/Pwa';
+
 import { SUGGESTED_CATEGORY_ID, categoryOf } from '@/lib/fixtures';
 
 const KINDS = [
@@ -23,6 +25,7 @@ const QUICK = ['20', '50', '100', '500'] as const;
  * - ยังไม่บันทึกจริง: เฟส 2 จะยิง optimistic + client_id (idempotency) แล้วปิด sheet
  */
 export function AddEntryFab() {
+  const offline = useOffline();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<Kind>('expense');
@@ -154,6 +157,13 @@ export function AddEntryFab() {
           ))}
         </div>
 
+        {/* design.md §6: ออฟไลน์ v1 = อ่านอย่างเดียว — บอกให้ชัดว่าบันทึกไม่ได้ ไม่ใช่ปุ่มเงียบ ๆ */}
+        {offline ? (
+          <p className="mt-3 text-[13px] leading-[18px] text-warn">
+            ออฟไลน์อยู่ — บันทึกใหม่ยังไม่ได้ (คิวออฟไลน์จะมาในเวอร์ชันถัดไป)
+          </p>
+        ) : null}
+
         {/* ปุ่มบันทึก: สูง 56 เสมอ (§2) อยู่ในระยะนิ้วโป้ง (ล่างขวาของ sheet) */}
         <div className="mt-3 flex justify-end gap-2">
           <button
@@ -165,7 +175,7 @@ export function AddEntryFab() {
           </button>
           <button
             type="button"
-            disabled={!canSave}
+            disabled={!canSave || offline}
             onClick={() => dialogRef.current?.close()}
             className="min-h-14 flex-1 rounded-btn bg-[var(--balance)] font-bold text-[var(--on-accent)] disabled:opacity-40"
           >

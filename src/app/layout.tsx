@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Sans_Thai } from 'next/font/google';
 
 import { AddEntryFab } from '@/components/AddEntrySheet';
+import { OfflineBar } from '@/components/Pwa';
 import { TabBar } from '@/components/TabBar';
 
 import './globals.css';
@@ -79,6 +80,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <IconSprite />
+        {/* design.md §6: แถบ "ออฟไลน์อยู่" + ลงทะเบียน service worker (บนสุดเพื่อให้เห็นทันทีไม่ต้องเลื่อน) */}
+        <OfflineBar />
         {/* max-w 430 + กลางจอ (design §1.3) · padding-bottom เว้นที่ให้แถบแท็บ + safe area (§2) */}
         <main className="mx-auto w-full max-w-[430px] px-4 pt-[calc(16px+env(safe-area-inset-top))] pb-[calc(var(--tab-h)+72px+env(safe-area-inset-bottom))]">
           {children}

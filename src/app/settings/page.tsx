@@ -1,3 +1,4 @@
+import { InstallApp } from '@/components/Pwa';
 import { MONTH_LABEL } from '@/lib/fixtures';
 
 // design.md §3 แท็บ 4 (ตั้งค่า) — เฟส 1 ทำแค่โครงให้แท็บไม่พัง
@@ -16,6 +17,11 @@ export default function SettingsPage() {
           </li>
         ))}
       </ul>
+      <section className="rounded-card border border-border bg-surface p-4">
+        <h2 className="mb-2 font-semibold">ติดตั้งแอป</h2>
+        <InstallApp />
+      </section>
+
       <p className="text-[13px] leading-[18px] text-text-muted">
         เดือนปัจจุบัน: {MONTH_LABEL} · ธีมตามระบบอยู่แล้ว (สลับเองได้ในหน้านี้ตอนต่อ DB)
       </p>

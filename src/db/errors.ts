@@ -40,7 +40,7 @@ function pgCode(error: unknown): string | undefined {
 export function toUserError(error: unknown): unknown {
   const message = DB_ERROR_MESSAGES[pgCode(error) ?? ''];
   if (!message) return error;
-  console.error('[jodjai] transaction write rejected by DB:', error);
+  console.error('[jodjai] write rejected by DB:', error);
   return new ValidationError(message, { cause: error });
 }
 

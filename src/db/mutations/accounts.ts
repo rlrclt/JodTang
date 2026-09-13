@@ -25,7 +25,7 @@ import type { Session } from '../session.ts';
 /** สตางค์เพดานเดียวกับ DB (accounts_initial_balance_check: > -1e15 และ < 1e15) */
 const MAX_BALANCE = 1_000_000_000_000_000;
 const CURRENCY = 'THB';
-/** ฟิลด์ที่ยอมรับจาก input — ที่ไม่อยู่ในลิสต์ (userId, id, archivedAt, currency, …) = ปฏิเสธ */
+/** ฟิลด์ที่ยอมรับจาก input — ที่เหลือ (userId, id, archivedAt, currency, …) ระบบกำหนดเอง = ปฏิเสธ */
 const ALLOWED_KEYS: readonly string[] = ['name', 'kind', 'initialBalance', 'icon', 'color'];
 
 export type ValidAccount = {
@@ -57,7 +57,7 @@ export function validateAccount(input: unknown): ValidAccount {
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_KEYS.includes(key)) {
-      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} (userId มาจาก session เท่านั้น)`);
+      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} จาก input`);
     }
   }
 
