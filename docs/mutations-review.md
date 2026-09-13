@@ -148,3 +148,48 @@ amount ช่วง/จำนวนเต็ม, kind, รูปร่าง tra
 - ไม่ได้รีวิว server action / หน้าจอ (ยังไม่มีในคอมมิตนี้) — ข้อ (2)/(ข) จะปิดที่ชั้นนั้นได้เหมือนกัน แต่ต้องมีที่ไหนที่หนึ่งรับผิดชอบชัดเจน
 - ไม่ได้รัน `next build` / `eslint` ซ้ำ (coder รายงาน exit 0 / 0 warning — ไม่ใช่ขอบเขต 5 ข้อนี้)
 - ไม่ได้ทดสอบ concurrency ระดับ Neon จริง — เคส race จำลองบน PGlite แบบกำหนดได้ (พอสำหรับพิสูจน์ว่า guard หาย)
+
+---
+
+## รอบ 2 (re-check เฉพาะ 3 จุดที่ตกลง) — ผ่านทั้ง 3 จุด
+
+revision ที่ตรวจ (commit **`e02f7a2`** · working tree สะอาด):
+`src/db/mutations/transactions.ts` md5 **`5963266bd9fe5cd3c6bcef7b6ff99a30`** ·
+`src/db/mutations/transactions.test.ts` md5 **`4f17bdd7d0bd48e7ee03fb88ac26715a`** ·
+`src/db/queries/transactions.ts` md5 `e91f7c8fe2c54f2d4aa85ae28c66b762`
+→ md5 ตรงกับ `git show e02f7a2:` ทั้งสามไฟล์ · harness พิมพ์ md5 ก่อน/หลัง **เท่ากัน** (ไม่มี edit ระหว่างตรวจ)
+
+คำสั่งเดียว: `node /tmp/probe-mut/recheck2.mjs` (15 ข้อตรวจ · ผลจริงด้านล่าง)
+
+| ตรวจ | ผล |
+|---|---|
+| ชุดเทสต์จริง 3 ไฟล์ | tests **33** · pass **33** · fail 0 |
+| **(A)** update ที่แถวถูกลบระหว่างอ่านกับเขียน | **ผ่าน** — ได้ `ValidationError: ไม่พบรายการนี้ (อาจถูกลบไปแล้วหรือไม่ใช่ของคุณ)` (ไม่ใช่ `undefined`) · ยอดใน DB ไม่ถูกแก้ (`amount=4321`) |
+| **(B)** 4 เคสเดิม × add/update = 8 เคส | **ผ่านทั้ง 8** — ทุกเคสเป็น `ValidationError` ข้อความไทย และไม่ match `insert into\|update "transactions"\|params:\|fkey\|constraint\|DrizzleQueryError\|23503\|23514\|22P02` |
+| **(B)** พิสูจน์ว่า DB เป็นชั้นที่ปฏิเสธ (ไม่ใช่ validate เดาเอง) | **ผ่าน** — เดินตาม cause chain: `ValidationError` → `DrizzleQueryError` → PG error ที่มี `code: 23503` + `constraint: transactions_account_id_user_id_fkey` |
+| **(C)** `patch occurredAt: null` / `''` | **ผ่าน** — ค่าใน DB คงเดิม ไม่ error |
+| **(C)** docstring + เทสต์ | **ผ่านทั้งคู่** (โค้ดมีคอมเมนต์อธิบาย และไฟล์เทสต์มีเคสนี้) |
+
+ข้อความที่ผู้ใช้เห็นตอนนี้ (ถอดจากผลรันจริง): `รูปแบบข้อมูลไม่ถูกต้อง` (22P02) ·
+`ไม่พบกระเป๋าเงินหรือหมวดที่อ้างถึง (หรือไม่ใช่ของผู้ใช้คนนี้)` (23503) — ไม่มีศัพท์เทคนิคและไม่มี SQL ✓ ตรง design §4
+
+**หมายเหตุของ harness (ไม่ใช่ข้อบกพร่องของโค้ด):** รอบแรกข้อ "พิสูจน์ว่า DB เป็นชั้นที่ปฏิเสธ" ขึ้น ❌
+เพราะ harness ของผมอ่าน `cause.message` แค่ชั้นเดียว แต่ chain จริงลึก 3 ชั้น (`ValidationError` → `DrizzleQueryError` → PG error)
+แก้ harness ให้เดินตาม chain แล้ว = ผ่าน · โค้ดและเทสต์ของ coder ทำถูกอยู่แล้ว (เทสต์ของเขาใช้ `why(error.cause)` แบบเดียวกัน)
+
+### คำตอบ 2 ข้อที่ coder ถาม
+
+1. **`export toUserError` เพื่อให้เทสต์ยิง 23514 ตรง ๆ = รับได้** — ไม่ได้เพิ่ม abstraction (ฟังก์ชันเดียวในไฟล์เดิม)
+   และที่สำคัญ ข้อกำหนด "พิสูจน์ด้วยเทสต์ ไม่ใช่โครงสร้าง" ถูกตอบครบแล้วจากสองทาง:
+   เทสต์ของเขา assert ทั้ง (ก) ข้อความผู้ใช้ไม่มี SQL/ชื่อ constraint และ (ข) รายละเอียดจาก DB ยังอยู่ใน cause
+   + harness ของผมยิง error จริงผ่าน add/update 8 เคส (ไม่ได้เรียก `toUserError` ตรง ๆ) → ผ่านทั้ง 8
+   · การที่ "รหัสที่ไม่รู้จัก = คืน error เดิม" ก็ถูกต้อง (บั๊กจริงต้องเห็น stack ไม่ใช่กลายเป็นข้อความผู้ใช้)
+2. **การ intercept ที่ `pglite.query` แทน `db.update`** — ตรงกับที่ผมเจอเหมือนกัน (proxy `db.update` ทำให้ `.set` หายเพราะ builder ต้องคืน chain แบบ sync)
+   วิธีที่เขาใช้ (หลัง SELECT สำเร็จ → ลบแถว → ค่อยปล่อย UPDATE) จำลองสถานการณ์จริงได้ตรงกว่าและอ่านง่ายกว่า ✓
+
+### ข้อสังเกต (ไม่มี action)
+
+`guardWrite` เรียก `console.error('[jodjai] transaction write rejected by DB:', error)` = พิมพ์ SQL + params เต็ม (รวมจำนวนเงินและ uuid) ลง log ฝั่งเซิร์ฟเวอร์
+— ถูกต้องตามเจตนา ("log ไว้ debug, ผู้ใช้เห็นข้อความไทย") และไม่ใช่ข้อมูลลับบนหน้าจอผู้ใช้ · ถ้าอนาคตอยากลดข้อมูลใน log ให้ตัด params ออก (ตัดสินตอนมี logger จริง) · ผลข้างเคียงเล็ก: ทำให้ output ของเทสต์รก (harness ต้องกรอง) — ไม่ต้องแก้
+
+**สรุป: ปิดครบ 3 จุด (A race · B การแปล error · C occurredAt) · ไม่มีข้อที่ไม่ผ่าน · ไม่เปิดประเด็นใหม่**
