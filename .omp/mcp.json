@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "neon": {
+      "type": "http",
+      "url": "https://mcp.neon.tech/mcp",
+      "headers": {
+        "Authorization": "!test -s \"$HOME/.config/neon/api-key\" && printf 'Bearer %s' \"$(cat \"$HOME/.config/neon/api-key\")\""
+      }
+    }
+  }
+}

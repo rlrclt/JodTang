@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# dev database (PGlite มีไฟล์ — ใช้เมื่อไม่มี DATABASE_URL, ดู src/db/dev-pglite.ts)
+/.pglite/
+
 # next.js
 /.next/
 /out/
@@ -33,6 +36,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+
+# omp: .omp/mcp.json ตั้งใจให้ track (ไม่มี secret) — ไฟล์นี้เก็บค่าจริงได้ จึงกันไว้
+.omp/secrets.yml
+.omp/plugins/
 
 # vercel
 .vercel

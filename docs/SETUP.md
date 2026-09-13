@@ -10,6 +10,33 @@
 
 ---
 
+## ทางลัด: รันแอปบนเครื่องได้โดยยังไม่มี credential (§1 ยังไม่ต้องทำ)
+
+ถ้าเพิ่ง clone มาและยังไม่อยากทำ §1 (Neon) — **รันแอปได้เลย** ไม่ต้องตั้ง `DATABASE_URL`
+
+```bash
+node scripts/dev-smoke.mjs   # พิสูจน์ว่าวงจร DB ครบ (สร้าง → อ่าน → ลบ) แล้วค่อย npm run dev
+npm run dev
+```
+
+เกิดอะไรขึ้น: `src/db/index.ts` เห็นว่าไม่มี `DATABASE_URL` และ `NODE_ENV !== 'production'`
+→ ต่อ **PGlite** (Postgres ตัวจริงที่คอมไพล์เป็น WASM) เก็บไฟล์ไว้ที่ `./.pglite`
+แล้ว apply DDL จาก `drizzle/0000_mighty_vulture.sql` ให้อัตโนมัติครั้งแรกที่เปิด (รันซ้ำไม่พัง)
+
+| | dev DB (ไม่ตั้ง `DATABASE_URL`) | Neon (§1) |
+|---|---|---|
+| ใช้เมื่อ | dev/test บนเครื่อง | ตั้ง `DATABASE_URL` แล้ว — **ใช้เสมอเมื่อมีค่า** |
+| ข้อมูลอยู่ที่ | `./.pglite/` (gitignore) | Neon project |
+| ล้างข้อมูล | `rm -rf .pglite` แล้วรันใหม่ (DDL apply เอง) | SQL เอง |
+
+- ⚠️ **`NODE_ENV=production` ที่ไม่มี `DATABASE_URL` ยังล้มเหมือนเดิม** — fallback นี้มีไว้เพื่อ dev เท่านั้น
+  (กันไม่ให้ production เผลอไปเขียนลง Postgres ในเครื่อง)
+- ⚠️ เป็น Postgres คนละตัวกับ production — ทดสอบเรื่อง extension/performance ของ Neon ที่นี่ไม่ได้
+- ย้ายที่เก็บได้ด้วย `PGLITE_DIR=/tmp/jodjai-dev` (เช่นถ้าไม่อยากให้ dev watcher เฝ้าโฟลเดอร์ข้อมูล)
+- ยังต้องมี `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` ถ้าจะทดสอบล็อกอิน (§0) — ที่เหลือเว้นว่างได้
+
+---
+
 ## 0. เตรียมก่อนเริ่ม (2 นาที)
 
 - [ ] สร้าง `.env` ที่ root ของโปรเจกต์ (ยังไม่ต้องมีค่าครบ)
