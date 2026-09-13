@@ -24,7 +24,8 @@ import { transactions } from '../schema.ts';
 /** 'YYYY-MM-01' ของเดือนไทย — เทียบ equality กับ transactions.occurred_month_bkk (generated stored) */
 export type PeriodMonth = string;
 
-const COLUMNS = {
+/** คอลัมน์มาตรฐานของแถวรายการ — ใช้ร่วมกับ write path (src/db/mutations) */
+export const TXN_COLUMNS = {
   id: transactions.id,
   kind: transactions.kind,
   amount: transactions.amount,
@@ -50,7 +51,8 @@ type Selected = {
 };
 
 /** kind การันตีโดย check constraint transactions_kind_check ฝั่ง DB → cast ที่จุดเดียวนี้ */
-const toRows = (rows: Selected[]): TxnRow[] => rows.map((row) => ({ ...row, kind: row.kind as TxnKind }));
+/** แปลงแถวจาก DB → TxnRow ใช้ร่วมกับ write path (cast kind จุดเดียว) */
+export const toRows = (rows: Selected[]): TxnRow[] => rows.map((row) => ({ ...row, kind: row.kind as TxnKind }));
 
 /**
  * เงื่อนไขกลางของทุก query: ของผู้ใช้คนนี้ + ยังไม่ถูกลบ (ห้ามลบ/ห้ามข้าม)
@@ -78,7 +80,7 @@ export type KeysetCursor = { occurredAt: Date; id: string };
 /** รายการของเดือน (เฉพาะรับ/จ่าย — transfer ไม่เป็นทั้งรับและจ่าย ตาม money.ts) */
 export async function monthRows(db: Db, userId: string, periodMonth: PeriodMonth): Promise<TxnRow[]> {
   const rows = await db
-    .select(COLUMNS)
+    .select(TXN_COLUMNS)
     .from(transactions)
     .where(
       and(liveOf(userId), inArray(transactions.kind, [...MONEY_KINDS]), eq(transactions.occurredMonthBkk, periodMonth)),
@@ -106,7 +108,7 @@ export async function monthExpenseByCategory(
  */
 export function recentTransactionsQuery(db: Db, userId: string, limit = 20, cursor?: KeysetCursor) {
   return db
-    .select(COLUMNS)
+    .select(TXN_COLUMNS)
     .from(transactions)
     .where(cursor ? and(liveOf(userId), afterCursor(cursor)) : liveOf(userId))
     .orderBy(desc(transactions.occurredAt), desc(transactions.id))
@@ -144,7 +146,7 @@ export async function listTransactions(db: Db, userId: string, filters: ListFilt
   if (filters.cursor) conditions.push(afterCursor(filters.cursor));
 
   const rows = await db
-    .select(COLUMNS)
+    .select(TXN_COLUMNS)
     .from(transactions)
     .where(and(...conditions))
     .orderBy(desc(transactions.occurredAt), desc(transactions.id))
