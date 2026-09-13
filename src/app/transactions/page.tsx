@@ -1,14 +1,29 @@
-import { TransactionList } from '@/components/TransactionRow';
-import { MONTH_LABEL, TRANSACTIONS } from '@/lib/fixtures';
+import { TransactionList, type TransactionRowView } from '@/components/TransactionRow';
+import { MONTH_LABEL, TRANSACTIONS, categoryOf } from '@/lib/fixtures';
+import { requireSession } from '@/lib/session';
 
 // ตัวกรองตาม §4 S4 — เฟส 1 ยังกดไม่เปลี่ยนผลลัพธ์ (static placeholder ให้เห็นหน้าตา)
 const FILTERS = ['ทั้งหมด', 'รับ', 'จ่าย', 'โอน', 'อาหาร', 'ค่าห้อง', 'กันยายน'] as const;
 
 /**
- * S4 รายการทั้งหมด (design.md §4 S4) — static ตามขอบเขตเฟส 1
- * เฟส 2: ค้นหา + ตัวกรอง + keyset pagination (occurred_at + id) ต่อกับ DB
+ * S4 รายการทั้งหมด (design.md §4 S4) — ยังใช้ fixtures รอบนี้ (ต่อ DB เป็นงานถัดไป)
+ * ที่เปลี่ยนรอบนี้: ต้องล็อกอินก่อนเข้า และส่งแถวในรูปแบบที่ component แสดงผลต้องการ
  */
-export default function TransactionsPage() {
+export default async function TransactionsPage() {
+  await requireSession();
+
+  const rows: TransactionRowView[] = TRANSACTIONS.map((txn) => {
+    const category = categoryOf(txn.categoryId);
+    return {
+      id: txn.id,
+      kind: txn.kind,
+      amount: txn.amount,
+      dateLabel: txn.dateLabel,
+      categoryName: category?.name ?? null,
+      categoryColor: category?.color ?? null,
+    };
+  });
+
   return (
     <div className="flex flex-col gap-4">
       <header className="flex min-h-11 items-center justify-between gap-2">
@@ -50,10 +65,10 @@ export default function TransactionsPage() {
         ))}
       </div>
 
-      <TransactionList items={TRANSACTIONS} />
+      <TransactionList items={rows} />
 
       <p className="text-[13px] leading-[18px] text-text-muted">
-        แสดง {TRANSACTIONS.length} รายการล่าสุด · เลื่อนไม่จำกัดแบบ keyset (ไม่ใช้ OFFSET) ในเฟส 2
+        แสดง {rows.length} รายการล่าสุด · เลื่อนไม่จำกัดแบบ keyset (ไม่ใช้ OFFSET) ในเฟส 2
       </p>
     </div>
   );

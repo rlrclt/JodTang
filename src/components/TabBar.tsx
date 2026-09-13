@@ -14,13 +14,16 @@ const TABS = [
 export function TabBar() {
   const pathname = usePathname();
 
+  // หน้าเข้าสู่ระบบไม่มีแท็บ (ยังไม่ล็อกอิน = ยังไม่มีที่ให้ไป) — design.md §3
+  if (pathname === '/login') return null;
+
   return (
     <nav
       aria-label="แท็บหลัก"
       className="fixed inset-x-0 bottom-0 z-20 mx-auto flex h-[calc(56px+env(safe-area-inset-bottom))] max-w-[430px] border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] shadow-[var(--shadow-sticky)]"
     >
       {TABS.map((tab) => {
-        const active = pathname === tab.href;
+        const active = tab.href === '/' ? pathname === '/' : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
         return (
           <Link
             key={tab.href}

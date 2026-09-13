@@ -1,13 +1,59 @@
-import { BUDGETS, TREND, TRANSACTIONS, categoryOf } from '@/lib/fixtures';
-import { expenseByCategory, formatSatang, periodTotals } from '@/lib/money';
+import Link from 'next/link';
+import { Suspense } from 'react';
 
-const WARN_AT = 0.8; // §1.1: ใช้ไป ≥ 80% ของงบ = ใกล้เกินงบ (ขึ้น --warn + คำกำกับ ไม่ใช้สีอย่างเดียว)
+import { BudgetRow, BudgetSkeleton } from '@/components/BudgetProgress';
+import { RetryBar } from '@/components/RetryBar';
+import { getDb } from '@/db';
+import { listBudgetProgress } from '@/db/queries/budgets';
+import { TREND, TRANSACTIONS, categoryOf } from '@/lib/fixtures';
+import { type PeriodMonth, formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
+import { expenseByCategory, formatSatang, periodTotals } from '@/lib/money';
+import { requireSession } from '@/lib/session';
+
+/**
+ * บล็อกเทียบงบ — query ของตัวเองแล้วสตรีมเข้ามาด้วย Suspense (ข้อเสนอ §3)
+ * ถ้าโหลดงบไม่สำเร็จ หน้าอื่นต้องไม่พัง: บล็อกนี้กลายเป็นแถบ + ปุ่มลองใหม่ (ตัวเลขสำคัญกว่ากราฟ)
+ */
+async function BudgetSection({ userId, periodMonth }: { userId: string; periodMonth: PeriodMonth }) {
+  let rows;
+  try {
+    rows = await listBudgetProgress(getDb(), userId, periodMonth);
+  } catch (error) {
+    console.error('[jodjai] โหลดงบประมาณไม่สำเร็จ:', error);
+    return <RetryBar message="โหลดงบไม่สำเร็จ" />;
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="mt-1 flex flex-col gap-1">
+        <p className="text-text-muted">เดือนนี้ยังไม่ได้ตั้งงบ</p>
+        <Link
+          href="/settings/budgets"
+          className="flex min-h-11 items-center font-semibold text-[var(--balance)]"
+        >
+          ไปตั้งงบที่หน้าตั้งค่า ›
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="mt-1">
+      {rows.map((row) => (
+        <BudgetRow key={row.budgetId} row={row} />
+      ))}
+    </ul>
+  );
+}
 
 /**
  * S5 สรุป (design.md §4 S5) — กราฟทำด้วย div + CSS ล้วน ไม่ใส่ไลบรารี (§7)
  * ยอดทุกตัวมาจาก src/lib/money.ts · กราฟห้ามใช้เฉดเขียว (§1.1) จึงใช้ --expense/ชุดกราฟตามที่กำหนด
+ * รอบนี้: บล็อกเทียบงบใช้ข้อมูลจริง (listBudgetProgress) · แนวโน้ม/กราฟหมวดยังใช้ fixtures (งานถัดไป)
  */
-export default function SummaryPage() {
+export default async function SummaryPage() {
+  const { userId } = await requireSession();
+  const periodMonth = periodMonthOfBkk();
   const totals = periodTotals(TRANSACTIONS);
   const byCategory = expenseByCategory(TRANSACTIONS);
   const maxTrend = Math.max(...TREND.map((point) => point.amount));
@@ -20,7 +66,7 @@ export default function SummaryPage() {
     <div className="flex flex-col gap-4">
       <header className="flex min-h-11 items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">สรุป</h1>
-        <p className="text-[13px] leading-[18px] text-text-muted">กันยายน 2569</p>
+        <p className="text-[13px] leading-[18px] text-text-muted">{formatMonthLabelTh(periodMonth)}</p>
       </header>
 
       <section aria-labelledby="trend-label" className="rounded-card border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
@@ -84,42 +130,9 @@ export default function SummaryPage() {
           </h2>
           <span className="text-[13px] leading-[18px] text-text-muted">งบเดือนนี้</span>
         </div>
-        <ul className="mt-1">
-          {BUDGETS.map((budget) => {
-            const category = categoryOf(budget.categoryId);
-            const ratio = budget.used / budget.total;
-            const warn = ratio >= WARN_AT;
-            return (
-              <li key={budget.categoryId} className="py-2">
-                <div className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold">{category?.name ?? 'ไม่ระบุหมวด'}</span>
-                    <span className="block text-[13px] leading-[18px] text-text-muted">
-                      ใช้ไป {Math.round(ratio * 100)}% ของงบเดือนนี้
-                    </span>
-                  </span>
-                  <span className={`num font-semibold ${warn ? 'text-warn' : ''}`}>
-                    {formatSatang(budget.used)} / {formatSatang(budget.total)}
-                  </span>
-                </div>
-                <div
-                  role="img"
-                  aria-label={`ใช้ไป ${Math.round(ratio * 100)}% ของงบ ${category?.name ?? ''}`}
-                  className="mt-2 h-2 overflow-hidden rounded-pill border border-border bg-surface-2"
-                >
-                  <span
-                    style={{ width: `${Math.min(100, ratio * 100)}%` }}
-                    className={`block h-full rounded-pill ${warn ? 'bg-warn' : 'bg-balance'}`}
-                  />
-                </div>
-                {/* สถานะต้องมีคำกำกับ ไม่สื่อด้วยสีอย่างเดียว (§1.1) */}
-                <p className={`mt-1 text-[13px] leading-[18px] ${warn ? 'text-warn' : 'text-text-muted'}`}>
-                  {warn ? '⚠ ใกล้เกินงบ' : 'อยู่ในงบ'}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
+        <Suspense fallback={<BudgetSkeleton rows={3} />}>
+          <BudgetSection userId={userId} periodMonth={periodMonth} />
+        </Suspense>
       </section>
     </div>
   );

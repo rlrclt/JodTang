@@ -1,17 +1,48 @@
 import Link from 'next/link';
 
-import { TransactionList } from '@/components/TransactionRow';
-import { MONTH_LABEL, RECENT_LIMIT, TRANSACTIONS } from '@/lib/fixtures';
-import { formatRowAmount, formatSatang, periodTotals } from '@/lib/money';
+import { TransactionList, dayLabel, type TransactionRowView } from '@/components/TransactionRow';
+import { getDb } from '@/db';
+import { listCategories, type CategoryRow } from '@/db/queries/categories';
+import { monthTotals, recentTransactions } from '@/db/queries/transactions';
+import { formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
+import { formatRowAmount, formatSatang } from '@/lib/money';
+import { requireSession } from '@/lib/session';
+
+/** จำนวนแถวล่าสุดในหน้าแรก (design.md §4 S2) */
+const RECENT_LIMIT = 20;
 
 /**
- * S2 หน้าแรก (design.md §4 S2) + §1.3/§2
- * ยอดทุกตัวคิดที่ src/lib/money.ts ที่เดียว — ห้ามบวก/ลบเงินในหน้านี้ (periodTotals กรอง deleted_at + kind ให้แล้ว)
- * เดือนก่อนหน้า/ถัดไป ยังกดไม่เปลี่ยนข้อมูล (รอต่อ DB — เฟส 2)
+ * S2 หน้าแรก (design.md §4 S2) + §1.3/§2 — ข้อมูลจริงจาก DB ของผู้ใช้ใน session
+ * ยอดทุกตัวคิดที่ src/lib/money.ts ที่เดียว (monthTotals) — ห้ามบวก/ลบเงินในหน้านี้
+ * เดือนก่อนหน้า/ถัดไป ยังกดไม่เปลี่ยนข้อมูล (ยังไม่ทำในรอบนี้)
  */
-export default function HomePage() {
-  const totals = periodTotals(TRANSACTIONS);
-  const recent = TRANSACTIONS.slice(0, RECENT_LIMIT);
+export default async function HomePage() {
+  const { userId } = await requireSession();
+  const db = getDb();
+  const periodMonth = periodMonthOfBkk();
+
+  // ทุก query ผูก userId ของ session + กรอง deleted_at ให้แล้วในชั้น query (src/db/queries/transactions.ts)
+  const [totals, recent, categories] = await Promise.all([
+    monthTotals(db, userId, periodMonth),
+    recentTransactions(db, userId, RECENT_LIMIT),
+    listCategories(db, userId),
+  ]);
+
+  // ชื่อ/สีหมวดของแถว — Record เพราะคีย์เป็น id (uuid) สตริงล้วน
+  const categoryById: Record<string, CategoryRow> = {};
+  for (const category of categories) categoryById[category.id] = category;
+
+  const recentViews: TransactionRowView[] = recent.map((txn) => {
+    const category = txn.categoryId ? categoryById[txn.categoryId] : undefined;
+    return {
+      id: txn.id,
+      kind: txn.kind,
+      amount: txn.amount,
+      dateLabel: dayLabel(txn.occurredAt),
+      categoryName: category?.name ?? null,
+      categoryColor: category?.color ?? null,
+    };
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -23,7 +54,7 @@ export default function HomePage() {
         >
           ‹
         </button>
-        <h1 className="text-2xl font-semibold">{MONTH_LABEL}</h1>
+        <h1 className="text-2xl font-semibold">{formatMonthLabelTh(periodMonth)}</h1>
         <button
           type="button"
           aria-label="เดือนถัดไป"
@@ -67,8 +98,8 @@ export default function HomePage() {
             ดูทั้งหมด
           </Link>
         </div>
-        {recent.length > 0 ? (
-          <TransactionList items={recent} />
+        {recentViews.length > 0 ? (
+          <TransactionList items={recentViews} />
         ) : (
           <p className="text-text-muted">เริ่มบันทึกรายการแรก</p>
         )}

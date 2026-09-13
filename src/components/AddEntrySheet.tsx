@@ -1,7 +1,9 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
+import { AmountKeypad, satangFromInput } from '@/components/AmountKeypad';
 import { useOffline } from '@/components/Pwa';
 
 import { SUGGESTED_CATEGORY_ID, categoryOf } from '@/lib/fixtures';
@@ -14,18 +16,16 @@ const KINDS = [
 
 type Kind = (typeof KINDS)[number]['id'];
 
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const;
-const QUICK = ['20', '50', '100', '500'] as const;
-
 /**
  * S3 เพิ่มรายการเร็ว (design.md §4 S3 + §2)
  * - ใช้ <dialog> + showModal(): ได้ focus trap · Esc · ::backdrop ฟรี ไม่ต้องดึงไลบรารี
- * - คีย์แพดของแอปเอง (≥56px) เป็น layer เสริม · ช่องจำนวนเงินยังเป็น <input> จริง (screen reader/คีย์บอร์ดระบบใช้ได้)
+ * - ช่องจำนวนเงิน + แป้นตัวเลขใช้ <AmountKeypad> ร่วมกับ sheet ของงบ (ที่เดียว)
  * - ค่าเริ่มต้น = จ่าย (สัดส่วนใช้งานจริงสูงกว่า — §3)
  * - ยังไม่บันทึกจริง: เฟส 2 จะยิง optimistic + client_id (idempotency) แล้วปิด sheet
  */
 export function AddEntryFab() {
   const offline = useOffline();
+  const pathname = usePathname();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<Kind>('expense');
@@ -42,19 +42,14 @@ export function AddEntryFab() {
     if (new URLSearchParams(window.location.search).get('add') === '1') open();
   }, []);
 
-  const press = (key: string) => {
-    setAmount((value) => {
-      if (key === 'back') return value.slice(0, -1);
-      if (key === '.') return value.includes('.') ? value : value === '' ? '0.' : `${value}.`;
-      if (/\.\d\d$/.test(value)) return value; // ทศนิยมครบ 2 ตำแหน่งแล้ว
-      if (value.replace('.', '').length >= 10) return value; // เพดานหลัก (กันค่าที่เกิน 1e15 สตางค์)
-      return value === '0' ? key : value + key;
-    });
-  };
-
-  const empty = amount === '' || Number(amount) === 0;
+  // ใช้ตัวแปลงสตริง→สตางค์ตัวเดียว (ไม่ผ่าน Number(): กัน '8.29' → 828.9999999999999)
+  const satang = satangFromInput(amount);
+  const empty = satang === null || satang === 0;
   const suggested = categoryOf(SUGGESTED_CATEGORY_ID);
   const canSave = !empty && kind !== 'transfer'; // โอนต้องเลือกปลายทางก่อน — เฟส 2
+
+  // หน้าเข้าสู่ระบบไม่มีปุ่มเพิ่มรายการ (ยังไม่มีผู้ใช้ให้บันทึก) — design.md §3
+  if (pathname === '/login') return null;
 
   return (
     <>
@@ -73,7 +68,7 @@ export function AddEntryFab() {
       <dialog
         ref={dialogRef}
         aria-label="เพิ่มรายการ"
-        className="m-0 w-full max-w-[430px] rounded-t-[20px] border-0 bg-surface p-4 pb-[calc(16px+env(safe-area-inset-bottom))] text-text shadow-[var(--shadow-sheet)] backdrop:bg-[rgb(2_6_23_/_0.45)] sm:mx-auto"
+        className="mt-auto mb-0 w-full max-w-[430px] rounded-t-[20px] border-0 bg-surface p-4 pb-[calc(16px+env(safe-area-inset-bottom))] text-text shadow-[var(--shadow-sheet)] backdrop:bg-[rgb(2_6_23_/_0.45)] sm:mx-auto"
       >
         <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-pill bg-border-strong" />
 
@@ -100,62 +95,14 @@ export function AddEntryFab() {
           })}
         </div>
 
-        <label htmlFor="sheet-amount" className="mt-3 block text-[13px] leading-[18px] text-text-muted">
-          จำนวนเงิน (บาท)
-        </label>
-        {/* ช่องกรอกจริง (inputmode=decimal) — คีย์แพดของแอปเป็น layer เสริม ไม่ใช่ทางเดียว (§2) */}
-        <div className="mt-1 flex min-h-14 items-center gap-1.5 rounded-input border border-border-strong bg-surface-2 px-3">
-          <span aria-hidden="true" className="font-semibold">
-            ฿
-          </span>
-          <input
-            id="sheet-amount"
-            ref={amountRef}
-            value={amount}
-            onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))}
-            inputMode="decimal"
-            autoComplete="off"
-            enterKeyHint="done"
-            placeholder="0"
-            className="num min-h-11 w-full bg-transparent text-right text-2xl font-semibold outline-none"
-          />
-        </div>
-        <p className="mt-1 text-[13px] leading-[18px] text-text-muted">
-          วันนี้ · หมวด: {suggested?.name ?? 'เลือกภายหลัง'}
-        </p>
-
-        <div className="mt-2 grid grid-cols-4 gap-2">
-          {QUICK.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setAmount(value)}
-              className="min-h-11 rounded-btn border border-border bg-surface-2 font-semibold"
-            >
-              {value}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          {KEYS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => press(key)}
-              aria-label={key === 'back' ? 'ลบทีละตัว' : key === '.' ? 'จุดทศนิยม' : key}
-              className="flex min-h-14 items-center justify-center rounded-input border border-border bg-surface-2 text-xl font-semibold active:scale-[0.98]"
-            >
-              {key === 'back' ? (
-                <svg className="size-5" aria-hidden="true">
-                  <use href="#i-back" />
-                </svg>
-              ) : (
-                key
-              )}
-            </button>
-          ))}
-        </div>
+        <AmountKeypad
+          id="sheet-amount"
+          label="จำนวนเงิน (บาท)"
+          value={amount}
+          onChange={setAmount}
+          inputRef={amountRef}
+          hint={<>วันนี้ · หมวด: {suggested?.name ?? 'เลือกภายหลัง'}</>}
+        />
 
         {/* design.md §6: ออฟไลน์ v1 = อ่านอย่างเดียว — บอกให้ชัดว่าบันทึกไม่ได้ ไม่ใช่ปุ่มเงียบ ๆ */}
         {offline ? (
