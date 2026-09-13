@@ -16,10 +16,10 @@
  *      ผู้เรียกจึงได้ Db กลับไปแบบ sync เหมือนเดิม โดยไม่ต้องแก้ src/app/** หรือ src/lib/**
  *   4. ไฟล์ DB อยู่ที่ ./.pglite (อยู่ใน .gitignore) — ข้อมูลในเครื่องเท่านั้น ห้าม commit
  *   5. PGlite เป็น postgres ใน WASM ที่อยู่ในหน่วยความจำของ process ตัวเอง → **1 data dir ต้องมี instance เดียวต่อ process**
- *      instance ที่เปิดค้างไว้ถือ snapshot ของตัวเอง ไม่มี invalidation ข้าม instance
- *      → เปิด 2 instance บน dir เดียวกัน (เช่นสอง process หรือเดิมคือหลาย module copy ใน next dev)
- *        แล้ว write ของตัวหนึ่งจะไม่ปรากฏให้อีกตัวอ่าน จนกว่าจะปิด/เปิดใหม่
- *      - ภายใน process แก้แล้วด้วย cache บน globalThis (getDevDb) — ทุก compilation layer ของ next dev ใช้ตัวเดียวกัน
+ *      cache อยู่บน globalThis และ **key = DEV_DB_DIR** (โมดูลถูกโหลดซ้ำได้หลาย registry ใน next dev)
+ *      - dir เดียวกัน ⇒ instance เดียวเสมอ · คนละ dir ⇒ คนละ instance (ไม่หยิบข้ามโฟลเดอร์)
+ *      - `DEV_DB_DIR` อ่านจาก `PGLITE_DIR`/cwd ตอนโมดูลถูกโหลด (ครั้งเดียวต่อ registry) — ตั้ง env ก่อนเปิด process
+ *      - `closeDevDb()` ปิดและล้างทุก dir ใน process
  *      - ข้าม process **ยังไม่มี lock**: อย่ารัน `next dev` สองตัว (หรือ dev + สคริปต์) ชี้ PGLITE_DIR เดียวกันพร้อมกัน
  *        ถ้าจำเป็นให้ตั้ง PGLITE_DIR คนละโฟลเดอร์ · และถ้าต้องทดสอบ write flow ให้ใช้ Neon (docs/SETUP.md)
  */
@@ -48,15 +48,24 @@ type DevDb = {
 };
 
 /**
- * cache ตัว instance ไว้บน `globalThis` ไม่ใช่ตัวแปรระดับโมดูล
+ * cache ตัว instance ไว้บน `globalThis` ไม่ใช่ตัวแปรระดับโมดูล — และ **key คือ data dir**
  *
- * ทำไม: `next dev` โหลดไฟล์นี้หลายครั้งใน process เดียวกัน — แต่ละ compilation layer (RSC/page กับ
- * route handler/server action) มี module registry คนละชุด → ตัวแปรระดับโมดูลได้ PGlite คนละตัว
- * ทั้งที่ชี้ data dir เดียวกัน · PGlite (postgres ใน WASM) ไม่มี invalidation ข้าม instance
+ * ทำไมต้อง globalThis: `next dev` โหลดไฟล์นี้หลายครั้งใน process เดียวกัน — แต่ละ compilation layer
+ * (RSC/page กับ route handler/server action) มี module registry คนละชุด → ตัวแปรระดับโมดูลได้ PGlite
+ * คนละตัวทั้งที่ชี้ data dir เดียวกัน · PGlite (postgres ใน WASM) ไม่มี invalidation ข้าม instance
  * → write ที่ layer หนึ่ง อีก layer ยังอ่าน snapshot เก่าของตัวเอง (เขียนแล้วหน้าเว็บไม่เห็นจนกว่าจะรีสตาร์ท)
- * `globalThis` เป็นที่เดียวที่ทุก layer ใน process เดียวกันเห็นร่วมกัน
+ *
+ * ทำไมต้อง key ด้วย dir: โมดูลที่ถูกโหลดซ้ำสองครั้งอ่าน `PGLITE_DIR`/cwd ได้คนละค่า → ถ้า cache ไม่สนใจ dir
+ * ตัวที่สองจะหยิบ instance ของ dir แรกไปใช้ = อ่าน/เขียนผิดโฟลเดอร์โดยไม่มี error (รีวิว wave5 park ไว้)
+ * key เดียวกัน ⇒ ได้ตัวเดิม (1 process = 1 instance ต่อ dir) · คนละ key ⇒ คนละ instance
  */
-const devDbCache = globalThis as typeof globalThis & { __jodjaiDevDb?: DevDb };
+const devDbCache = globalThis as typeof globalThis & { __jodjaiDevDb?: Map<string, DevDb> };
+
+/** map ของ process นี้ (สร้างครั้งแรกที่ใช้) — key = `DEV_DB_DIR` ที่โมดูลนี้ resolve ได้ */
+function devDbCacheMap(): Map<string, DevDb> {
+  devDbCache.__jodjaiDevDb ??= new Map();
+  return devDbCache.__jodjaiDevDb;
+}
 
 /** สร้าง PGlite + drizzle ที่รอความพร้อมเอง (ดูหมายเหตุ 3 หัวไฟล์) */
 function create(): DevDb {
@@ -116,18 +125,25 @@ function create(): DevDb {
   };
 }
 
-/** dev DB ของ process นี้ (ตัวเดียว ทุก layer ใช้ร่วมกัน) — sync เหมือน getDb() ของ Neon */
+/** dev DB ของ process นี้ (1 instance ต่อ data dir ทุก layer ใช้ร่วมกัน) — sync เหมือน getDb() ของ Neon */
 export function getDevDb(): Db {
-  devDbCache.__jodjaiDevDb ??= create();
-  return devDbCache.__jodjaiDevDb.db;
+  const cache = devDbCacheMap();
+  const open = cache.get(DEV_DB_DIR);
+  if (open) return open.db;
+
+  const created = create();
+  cache.set(DEV_DB_DIR, created);
+  return created.db;
 }
 
 /**
- * ปิด dev DB (flush ลงดิสก์) — เรียกจากสคริปต์/เทสต์เท่านั้น
+ * ปิด dev DB ทุก dir ที่ process นี้เปิดไว้ (flush ลงดิสก์) — เรียกจากสคริปต์/เทสต์เท่านั้น
+ * ล้าง "ทุก key" ไม่ใช่แค่ dir ของผู้เรียก: ปิดแล้วตัวถัดไปที่เรียก getDevDb() จะได้ instance ใหม่สะอาด
  * ไม่มี dev DB เปิดอยู่ = ไม่ทำอะไร (สคริปต์ที่รันแต่โหมด Neon เรียกได้โดยไม่พัง)
  */
 export async function closeDevDb(): Promise<void> {
-  const open = devDbCache.__jodjaiDevDb;
-  devDbCache.__jodjaiDevDb = undefined;
-  await open?.close();
+  const cache = devDbCacheMap();
+  const open = [...cache.values()];
+  cache.clear();
+  await Promise.all(open.map((entry) => entry.close()));
 }
