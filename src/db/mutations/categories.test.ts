@@ -19,7 +19,13 @@ import { listCategories } from '../queries/categories.ts';
 import { monthTotals } from '../queries/transactions.ts';
 import * as schema from '../schema.ts';
 import { addAccount } from './accounts.ts';
-import { addCategory, archiveCategory, updateCategory, validateCategory } from './categories.ts';
+import {
+  addCategory,
+  archiveCategory,
+  restoreCategory,
+  updateCategory,
+  validateCategory,
+} from './categories.ts';
 import { addTransaction } from './transactions.ts';
 
 const DDL = readFileSync(new URL('../../../docs/schema.sql', import.meta.url), 'utf8');
@@ -277,4 +283,48 @@ test('แพ้การแข่งตอน update: แถวถูก archive
   assert.equal(after.name, 'หมวดแข่ง', 'ชื่อต้องไม่ถูกเขียนทับ');
   assert.equal(after.sort_order, 3);
   assert.notEqual(after.archived_at, null, 'แถวต้องยังถูก archive อยู่');
+});
+
+test('กู้คืนหมวด (restore): กลับมาในลิสต์ปกติ · ข้ามผู้ใช้ทำไม่ได้ · ชื่อชนของที่สร้างใหม่ระหว่าง archive = ข้อความไทย', async () => {
+  const gone = await addCategory(db, SESSION_1, { kind: 'expense', name: 'ของที่เลิกใช้' });
+  await archiveCategory(db, SESSION_1, gone.id);
+  assert.equal(
+    (await listCategories(db, U1)).some((row) => row.id === gone.id),
+    false,
+    'archive แล้วต้องไม่อยู่ในลิสต์ปกติ',
+  );
+
+  // ข้ามผู้ใช้ทำไม่ได้
+  await assert.rejects(
+    () => restoreCategory(db, SESSION_2, gone.id),
+    (error: unknown) => error instanceof ValidationError && /ไม่พบหมวดนี้/.test(error.message),
+  );
+  assert.notEqual((await rawCategory(gone.id)).archived_at, null, 'ของ u2 ต้องไม่ถูกปลด archive');
+
+  // ยกเลิกซ้ำบนแถวที่ยัง active = ไม่ใช่ no-op เงียบ ๆ
+  const active = await addCategory(db, SESSION_1, { kind: 'expense', name: 'ยังใช้อยู่' });
+  await assert.rejects(() => restoreCategory(db, SESSION_1, active.id), ValidationError);
+
+  assert.deepEqual(await restoreCategory(db, SESSION_1, gone.id), { id: gone.id });
+  assert.equal((await rawCategory(gone.id)).archived_at, null);
+  assert.equal(
+    (await listCategories(db, U1)).some((row) => row.id === gone.id),
+    true,
+    'ยกเลิก archive แล้วต้องกลับมาในลิสต์ปกติ',
+  );
+});
+
+test('กู้คืนแล้วชนชื่อหมวดที่สร้างใหม่ระหว่างนั้น → 23505 ออกเป็นข้อความไทย (ไม่ใช่ error ดิบ)', async () => {
+  const first = await addCategory(db, SESSION_1, { kind: 'expense', name: 'ชื่อชน' });
+  await archiveCategory(db, SESSION_1, first.id);
+  // สร้างชื่อเดิมได้หลัง archive (partial unique index) — นี่คือกับดักที่ schema review เตือนไว้
+  const second = await addCategory(db, SESSION_1, { kind: 'expense', name: 'ชื่อชน' });
+  assert.notEqual(second.id, first.id);
+
+  await assert.rejects(
+    () => restoreCategory(db, SESSION_1, first.id),
+    (error: unknown) => error instanceof ValidationError && /มีชื่อนี้อยู่แล้ว/.test(error.message),
+  );
+  assert.notEqual((await rawCategory(first.id)).archived_at, null, 'ไม่สำเร็จ = ต้องยัง archive อยู่');
+  assert.equal((await rawCategory(second.id)).archived_at, null, 'แถวที่ active ต้องไม่ถูกแตะ');
 });

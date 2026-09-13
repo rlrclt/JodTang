@@ -19,7 +19,13 @@ import * as schema from '../schema.ts';
 import { monthTotals } from '../queries/transactions.ts';
 import { ValidationError } from '../errors.ts';
 import { addTransaction } from './transactions.ts';
-import { addAccount, archiveAccount, updateAccount, validateAccount } from './accounts.ts';
+import {
+  addAccount,
+  archiveAccount,
+  restoreAccount,
+  updateAccount,
+  validateAccount,
+} from './accounts.ts';
 
 const DDL = readFileSync(new URL('../../../docs/schema.sql', import.meta.url), 'utf8');
 
@@ -274,4 +280,75 @@ test('แพ้การแข่งตอน update: แถวถูก archive
   assert.equal(after.name, 'กระเป๋าแข่ง', 'ชื่อต้องไม่ถูกเขียนทับ');
   assert.notEqual(after.archived_at, null, 'แถวต้องยังถูก archive อยู่');
   assert.equal(Number(after.initial_balance), 5000);
+});
+
+test('กู้คืนกระเป๋า (restore): กลับมาในลิสต์ active · ข้ามผู้ใช้ทำไม่ได้ · ชื่อชนของที่สร้างใหม่ = ข้อความไทย', async () => {
+  const gone = await addAccount(db, SESSION_1, { name: 'กระเป๋าที่เลิกใช้', kind: 'ewallet', initialBalance: 700 });
+  await archiveAccount(db, SESSION_1, gone.id);
+  assert.equal(
+    (await listAccounts(db, U1)).some((row) => row.id === gone.id),
+    false,
+    'archive แล้วต้องไม่อยู่ในลิสต์ active',
+  );
+
+  await assert.rejects(
+    () => restoreAccount(db, SESSION_2, gone.id),
+    (error: unknown) => error instanceof ValidationError && /ไม่พบกระเป๋านี้/.test(error.message),
+  );
+  assert.notEqual((await rawAccount(gone.id)).archived_at, null, 'ของ u2 ต้องไม่ถูกปลด archive');
+
+  const stillActive = await addAccount(db, SESSION_1, { name: 'ยังใช้อยู่', kind: 'cash' });
+  await assert.rejects(() => restoreAccount(db, SESSION_1, stillActive.id), ValidationError);
+
+  assert.deepEqual(await restoreAccount(db, SESSION_1, gone.id), { id: gone.id });
+  assert.equal((await rawAccount(gone.id)).archived_at, null);
+  assert.equal(Number((await rawAccount(gone.id)).initial_balance), 700, 'ยอดตั้งต้นต้องไม่ถูกแตะ');
+  assert.equal((await listAccounts(db, U1)).some((row) => row.id === gone.id), true);
+
+  // ชื่อชน (partial unique index) → 23505 ต้องออกเป็นข้อความไทย
+  const first = await addAccount(db, SESSION_1, { name: 'ชื่อชนกระเป๋า', kind: 'cash' });
+  await archiveAccount(db, SESSION_1, first.id);
+  await addAccount(db, SESSION_1, { name: 'ชื่อชนกระเป๋า', kind: 'cash' });
+  await assert.rejects(
+    () => restoreAccount(db, SESSION_1, first.id),
+    (error: unknown) => error instanceof ValidationError && /มีชื่อนี้อยู่แล้ว/.test(error.message),
+  );
+  assert.notEqual((await rawAccount(first.id)).archived_at, null);
+});
+
+test('ห้าม archive กระเป๋าใบสุดท้ายที่ยัง active (กติกาชั้นข้อมูล — UI ต้องพึ่งข้อนี้)', async () => {
+  const solo = { userId: 'u-solo' };
+  await pglite.exec(`insert into "user" (id, name) values ('${solo.userId}', 'Solo');`);
+  const only = await addAccount(db, solo, { name: 'ใบเดียว', kind: 'cash' });
+
+  await assert.rejects(
+    () => archiveAccount(db, solo, only.id),
+    (error: unknown) => error instanceof ValidationError && /ต้องมีกระเป๋าอย่างน้อย 1 ใบ/.test(error.message),
+  );
+  assert.equal((await listAccounts(db, solo.userId)).length, 1, 'ใบเดิมต้องยัง active');
+  assert.equal((await rawAccount(only.id)).archived_at, null);
+
+  // 2 ใบ → archive ได้ 1 ใบ แต่ใบสุดท้ายยังห้าม
+  const second = await addAccount(db, solo, { name: 'ใบที่สอง', kind: 'bank' });
+  await archiveAccount(db, solo, second.id);
+  assert.deepEqual(
+    (await listAccounts(db, solo.userId)).map((row) => row.name),
+    ['ใบเดียว'],
+    'archive ใบที่สองสำเร็จ',
+  );
+  await assert.rejects(() => archiveAccount(db, solo, only.id), ValidationError);
+  assert.equal(
+    (await listAccounts(db, solo.userId, { includeArchived: true })).length,
+    2,
+    'includeArchived: true เห็นทั้งใบที่ active และที่ archive',
+  );
+
+  // กู้คืนแล้ว archive อีกใบได้ → กติกาคิดจากจำนวน active จริง ไม่ใช่สถานะค้าง
+  await restoreAccount(db, solo, second.id);
+  await archiveAccount(db, solo, only.id);
+  assert.deepEqual(
+    (await listAccounts(db, solo.userId)).map((row) => row.name),
+    ['ใบที่สอง'],
+  );
+  assert.equal((await listAccounts(db, solo.userId, { includeArchived: true })).length, 2);
 });

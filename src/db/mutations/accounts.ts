@@ -13,7 +13,7 @@
  * หมายเหตุ: active ของตารางนี้คือ archived_at is null — คนละกติกากับ transactions (deleted_at)
  * จึงใช้ ownActiveAccount() ของไฟล์นี้ ไม่ใช่ liveOf() ของ transactions
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import { toSatang } from '../../lib/money.ts';
 import { guardWrite, ValidationError } from '../errors.ts';
@@ -169,7 +169,13 @@ export async function updateAccount(
   return rows[0];
 }
 
-/** archive กระเป๋า = ตั้ง archived_at (ไม่มี DELETE จริงในชั้นนี้) */
+/**
+ * archive กระเป๋า = ตั้ง archived_at (ไม่มี DELETE จริงในชั้นนี้)
+ *
+ * กติกาชั้นข้อมูล (spec wave9 §5): **ห้าม archive กระเป๋าใบสุดท้ายที่ยัง active** — ถ้าเหลือ 0 ใบ ผู้ใช้บันทึกรายการใหม่ไม่ได้เลย
+ * บังคับที่นี่ไม่ใช่ที่ UI เพราะ UI ข้ามได้ (server action ถูกเรียกตรง ๆ ได้) · ทำใน statement เดียวกันเพื่อลดช่วงแข่ง:
+ * เงื่อนไข `(select count(*) ...) > 1` ถูกประเมินตอน UPDATE → สองคำขอที่แข่งกันจะเหลือ active อย่างน้อย 1 ใบเสมอในทางปฏิบัติ
+ */
 export async function archiveAccount(db: Db, session: Session, id: string): Promise<{ id: string }> {
   const rowId = requiredText(id, 'id ของกระเป๋า');
 
@@ -177,12 +183,53 @@ export async function archiveAccount(db: Db, session: Session, id: string): Prom
     db
       .update(accounts)
       .set({ archivedAt: new Date() })
-      .where(ownActiveAccount(session, rowId))
+      .where(
+        and(
+          ownActiveAccount(session, rowId),
+          sql`(select count(*) from ${accounts} where ${accounts.userId} = ${session.userId} and ${accounts.archivedAt} is null) > 1`,
+        ),
+      )
       .returning({ id: accounts.id }),
   );
 
   if (rows.length === 0) {
+    // แยกสาเหตุให้ผู้ใช้: ใบสุดท้าย vs ไม่พบ/ไม่ใช่ของคุณ (ยิงเพิ่ม 1 query เฉพาะเส้นที่ล้มเหลว)
+    const active = await guardWrite(() =>
+      db
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(ownActiveAccount(session, rowId)),
+    );
+    if (active.length > 0) {
+      throw new ValidationError('ต้องมีกระเป๋าอย่างน้อย 1 ใบ — เลิกใช้ใบสุดท้ายไม่ได้');
+    }
     throw new ValidationError('ไม่พบกระเป๋านี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+  }
+  return rows[0];
+}
+
+/** แถวที่ถูก archive ของผู้ใช้คนนี้เท่านั้น — กู้คืนได้เฉพาะของที่ archive อยู่ (ของที่ active = ไม่พบ) */
+const ownArchivedAccount = (session: Session, id: string) =>
+  and(eq(accounts.id, id), eq(accounts.userId, session.userId), isNotNull(accounts.archivedAt));
+
+/**
+ * กู้คืนกระเป๋า = ตั้ง archived_at = null → กลับมาให้เลือกในฟอร์มอีกครั้ง
+ * ระวัง 23505: partial unique index คิดเฉพาะแถวที่ยัง active — ชื่อที่ถูกใช้ไประหว่างที่ archive อยู่จะชน
+ * → guardWrite แปลเป็น "มีชื่อนี้อยู่แล้ว" (server action เติมคำว่า "ในกระเป๋าที่ใช้งาน" ต่อท้ายเอง)
+ */
+export async function restoreAccount(db: Db, session: Session, id: string): Promise<{ id: string }> {
+  const rowId = requiredText(id, 'id ของกระเป๋า');
+
+  const rows = await guardWrite(() =>
+    db
+      .update(accounts)
+      .set({ archivedAt: null })
+      .where(ownArchivedAccount(session, rowId))
+      .returning({ id: accounts.id }),
+  );
+
+  if (rows.length === 0) {
+    throw new ValidationError('ไม่พบกระเป๋านี้ (หรือยังไม่ถูก archive / ไม่ใช่ของคุณ)');
   }
   return rows[0];
 }

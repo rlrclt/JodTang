@@ -14,7 +14,7 @@
  * หมายเหตุ 2: เปลี่ยน kind ของหมวดไม่ได้ เพราะ transactions อ้าง (category_id, kind, user_id)
  *   ผ่าน composite FK — เปลี่ยนแล้วรายการเก่าพัง (จะได้ 23503 ที่อ่านไม่รู้เรื่อง) จึงปฏิเสธที่ชั้นนี้พร้อมข้อความที่เข้าใจได้
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 
 import { guardWrite, ValidationError } from '../errors.ts';
 import type { Db } from '../index.ts';
@@ -182,6 +182,32 @@ export async function archiveCategory(db: Db, session: Session, id: string): Pro
 
   if (rows.length === 0) {
     throw new ValidationError('ไม่พบหมวดนี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+  }
+  return rows[0];
+}
+
+/** แถวที่ถูก archive ของผู้ใช้คนนี้เท่านั้น — ปลด archive ได้เฉพาะของที่ archive อยู่ (ของที่ active = ไม่พบ) */
+const ownArchivedCategory = (session: Session, id: string) =>
+  and(eq(categories.id, id), eq(categories.userId, session.userId), isNotNull(categories.archivedAt));
+
+/**
+ * ยกเลิก archive = ตั้ง archived_at = null → หมวดกลับมาให้เลือกในฟอร์มอีกครั้ง
+ * ระวัง 23505: partial unique index คิดเฉพาะแถวที่ยัง active — ถ้าระหว่างที่ archive อยู่มีคนสร้างชื่อเดิมขึ้นมา
+ * การปลด archive จะชน unique → guardWrite แปลเป็น "มีชื่อนี้อยู่แล้ว" (ไม่ใช่ error ดิบของ DB)
+ */
+export async function restoreCategory(db: Db, session: Session, id: string): Promise<{ id: string }> {
+  const rowId = requiredText(id, 'id ของหมวด');
+
+  const rows = await guardWrite(() =>
+    db
+      .update(categories)
+      .set({ archivedAt: null })
+      .where(ownArchivedCategory(session, rowId))
+      .returning({ id: categories.id }),
+  );
+
+  if (rows.length === 0) {
+    throw new ValidationError('ไม่พบหมวดนี้ (หรือยังไม่ถูก archive / ไม่ใช่ของคุณ)');
   }
   return rows[0];
 }
