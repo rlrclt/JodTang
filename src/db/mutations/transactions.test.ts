@@ -21,6 +21,7 @@ import * as schema from '../schema.ts';
 import {
   addTransaction,
   softDeleteTransaction,
+  toUserError,
   updateTransaction,
   validateTransaction,
   ValidationError,
@@ -133,12 +134,19 @@ test('(5) ข้ามผู้ใช้ทำไม่ได้ — accountId �
   await assert.rejects(
     // categoryId เป็นของ u1 เอง (ถูกต้อง) แต่กระเป๋าเป็นของ u2 → FK (account_id, user_id) ต้องปฏิเสธ
     () => addTransaction(db, SESSION_1, { ...validExpense, accountId: A_U2 }),
-    (error: unknown) => /transactions_account_id_user_id_fkey/.test(why(error)),
+    (error: unknown) =>
+      error instanceof ValidationError &&
+      /ไม่พบกระเป๋าเงินหรือหมวด/.test(error.message) &&
+      !/insert into/i.test(error.message) &&
+      /transactions_account_id_user_id_fkey/.test(why(error.cause)),
   );
   assert.equal(await countRows(), before, 'ต้องไม่มีแถวใหม่ถูกสร้าง');
   await assert.rejects(
     () => addTransaction(db, SESSION_1, { ...validExpense, categoryId: C_U2E }),
-    (error: unknown) => /transactions_category_id_kind_user_id_fkey/.test(why(error)),
+    (error: unknown) =>
+      error instanceof ValidationError &&
+      /ไม่พบกระเป๋าเงินหรือหมวด/.test(error.message) &&
+      /transactions_category_id_kind_user_id_fkey/.test(why(error.cause)),
   );
   assert.equal(await countRows(), before);
 });
@@ -252,4 +260,126 @@ test('(2) แก้รายการ: ประกอบร่างใหม�
   // ลบแล้วแก้ไม่ได้
   await softDeleteTransaction(db, SESSION_1, created.id);
   await assert.rejects(() => updateTransaction(db, SESSION_1, created.id, { amount: 30000 }), ValidationError);
+});
+
+test('(B) DB ปฏิเสธ → ValidationError ข้อความไทย ไม่มี SQL หลุด (ฝั่ง add และ update)', async () => {
+  const leaks = /insert into|update "transactions"|select |violates|constraint/i;
+  const expectUserError = (message: RegExp, constraint?: RegExp) => (error: unknown) => {
+    if (!(error instanceof ValidationError)) return false;
+    if (leaks.test(error.message)) return false; // SQL/ศัพท์เทคนิคต้องไม่ถึงผู้ใช้
+    if (!message.test(error.message)) return false;
+    // แต่ยังต้องพิสูจน์ได้ว่า DB เป็นคนกันจริง (รายละเอียดอยู่ใน cause ไม่ใช่ในข้อความผู้ใช้)
+    return constraint ? constraint.test(why(error.cause)) : true;
+  };
+
+  const row = await addTransaction(db, SESSION_1, { ...validExpense, amount: 12000 });
+
+  // 22P02 — uuid ผิดรูป (ฝั่ง add)
+  await assert.rejects(
+    () => addTransaction(db, SESSION_1, { ...validExpense, accountId: 'not-a-uuid' }),
+    expectUserError(/รูปแบบข้อมูลไม่ถูกต้อง/),
+  );
+  // 22P02 — id ผิดรูป (ฝั่ง update)
+  await assert.rejects(
+    () => updateTransaction(db, SESSION_1, 'not-a-uuid', { amount: 999 }),
+    expectUserError(/รูปแบบข้อมูลไม่ถูกต้อง/),
+  );
+  // 23503 — กระเป๋าของผู้ใช้คนอื่น (ฝั่ง update)
+  await assert.rejects(
+    () => updateTransaction(db, SESSION_1, row.id, { accountId: A_U2 }),
+    expectUserError(/ไม่พบกระเป๋าเงินหรือหมวด/, /transactions_account_id_user_id_fkey/),
+  );
+  // 23503 — กระเป๋าไม่มีอยู่จริง (uuid ถูกรูปแบบ)
+  await assert.rejects(
+    () => updateTransaction(db, SESSION_1, row.id, { accountId: '99999999-9999-9999-9999-999999999999' }),
+    expectUserError(/ไม่พบกระเป๋าเงินหรือหมวด/, /transactions_account_id_user_id_fkey/),
+  );
+  // 23503 — หมวด kind ไม่ตรง (รายจ่ายไปผูกหมวดรายรับ)
+  await assert.rejects(
+    () => updateTransaction(db, SESSION_1, row.id, { categoryId: C_SALARY }),
+    expectUserError(/ไม่พบกระเป๋าเงินหรือหมวด/, /transactions_category_id_kind_user_id_fkey/),
+  );
+
+  // เคสที่ล้มต้องไม่ทิ้งร่องรอย: ค่าใน DB ยังเป็นชุดเดิม
+  const after = await pglite.query<{ account_id: string; category_id: string; amount: string | number }>(
+    `select account_id, category_id, amount from transactions where id = '${row.id}'`,
+  );
+  assert.deepEqual(
+    { ...after.rows[0], amount: Number(after.rows[0].amount) },
+    { account_id: A1, category_id: C_FOOD, amount: 12000 },
+  );
+
+  // 23514 (check ของ DB): validate กันก่อนถึง DB ทุกเส้นทาง จึงพิสูจน์การแปลตรง ๆ ที่ฟังก์ชัน
+  assert.ok(toUserError({ code: '23514' }) instanceof ValidationError);
+  assert.ok(toUserError({ code: '22P02' }) instanceof ValidationError);
+  // รหัสที่ไม่รู้จักต้องไม่ถูกกลืน (บั๊กจริง/DB ล่ม ต้องเห็น error เดิม)
+  const unknown = new Error('connection reset');
+  assert.equal(toUserError(unknown), unknown);
+});
+
+test('(A) แพ้การแข่งตอน update: แถวถูกลบระหว่าง select กับ update → ValidationError ไม่ใช่ undefined', async () => {
+  const row = await addTransaction(db, SESSION_1, { ...validExpense, amount: 33000 });
+
+  // intercept ที่ client ของ drizzle: หลัง SELECT สำเร็จ (ก่อน SQL ของ update จะถูกส่ง) ให้ลบแถวนั้นทิ้ง
+  // (จำลองเปิดสองแท็บ: แท็บหนึ่งลบก่อน อีกแท็บกดบันทึก — ต้อง deterministic ไม่ใช่การเดา)
+  let raced = false;
+  const racingClient = new Proxy(pglite as unknown as Record<string, unknown>, {
+    get(target, prop) {
+      if (prop === 'query') {
+        return async (...args: unknown[]) => {
+          const result = await (Reflect.get(target, 'query') as (...a: unknown[]) => Promise<unknown>).apply(
+            target,
+            args,
+          );
+          if (!raced && /select/i.test(String(args[0]))) {
+            raced = true;
+            await (Reflect.get(target, 'exec') as (sql: string) => Promise<unknown>).call(
+              target,
+              `update transactions set deleted_at = now() where id = '${row.id}'`,
+            );
+          }
+          return result;
+        };
+      }
+      return Reflect.get(target, prop);
+    },
+  }) as unknown as typeof pglite;
+  const racing = drizzle(racingClient, { schema }) as unknown as Db;
+
+  await assert.rejects(
+    () => updateTransaction(racing, SESSION_1, row.id, { amount: 44000 }),
+    (error: unknown) => error instanceof ValidationError && /ไม่พบรายการนี้/.test(error.message),
+    'ต้องได้ ValidationError (เดิมคืน undefined แล้วไปพังเป็น TypeError = 500)',
+  );
+
+  // ข้อมูลไม่เสียหาย: แถวยังอยู่ (ลบ) และยอดเดิม
+  const state = await pglite.query<{ amount: string | number; deleted_at: string | null }>(
+    `select amount, deleted_at from transactions where id = '${row.id}'`,
+  );
+  assert.equal(Number(state.rows[0].amount), 33000);
+  assert.notEqual(state.rows[0].deleted_at, null);
+});
+
+test('(C) patch occurredAt: null/\'\' = คงค่าเดิม (คนละความหมายกับ add ที่ไม่ส่ง = now())', async () => {
+  const created = await addTransaction(db, SESSION_1, {
+    ...validExpense,
+    amount: 15000,
+    occurredAt: '2026-09-20T09:00:00+07:00',
+  });
+
+  for (const occurredAt of [null, '']) {
+    const patched = await updateTransaction(db, SESSION_1, created.id, { amount: 16000, occurredAt });
+    assert.equal(
+      patched.occurredAt?.toISOString(),
+      created.occurredAt?.toISOString(),
+      `patch occurredAt=${String(occurredAt)} ต้องคงค่าเดิม ไม่ใช่ล้าง`,
+    );
+  }
+
+  // add ที่ไม่ส่ง occurredAt = DB ใส่ now() (ไม่ใช่คงเดิม)
+  const fresh = await addTransaction(db, SESSION_1, { ...validExpense, amount: 17000, occurredAt: undefined });
+  assert.ok(
+    Math.abs(Date.now() - (fresh.occurredAt?.getTime() ?? 0)) < 120_000,
+    'add ที่ไม่ส่ง occurredAt ต้องได้เวลาปัจจุบันจาก DB',
+  );
 });

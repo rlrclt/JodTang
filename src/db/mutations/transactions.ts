@@ -3,8 +3,9 @@
  *
  * กติกาของไฟล์นี้ (docs/schema.sql + docs/design.md §4 S3):
  *   1. userId มาจาก session เท่านั้น — input ที่ส่ง userId/user_id/id/deletedAt/currency เข้ามาถูกปฏิเสธ
- *   2. validate ให้ตรงกติกา DB ก่อนยิง SQL (transactions_shape_ck + check ของ amount/kind)
- *      → ผู้ใช้ได้ข้อความไทย ไม่ใช่ error ดิบของ PG (design §4: error ห้ามมีศัพท์เทคนิค)
+ *   2. validate ก่อนยิง SQL เท่าที่ตรวจได้แบบ sync (รูปร่างตาม transactions_shape_ck · kind · ช่วง/จำนวนเต็มของ amount)
+ *      ส่วนที่ validate ไม่ได้ (uuid ผิดรูป · กระเป๋า/หมวดไม่มีอยู่หรือไม่ใช่ของผู้ใช้นี้ · kind ไม่ตรงกับหมวด · check ของ DB)
+ *      DB เป็นคนกัน แล้ว toUserError() แปลเป็น ValidationError ข้อความไทยที่จุดเดียว — ห้ามให้ .message ของ drizzle (มี SQL เต็ม) ถึงผู้ใช้
  *   3. ลบ = soft delete (ตั้ง deletedAt) ห้าม DELETE จริง (ยอดเดือนที่สรุปไปแล้วต้องไม่หายย้อนหลัง)
  *   4. ห้ามคำนวณเงินในชั้นนี้ (ไม่มีสูตร/ผลรวม) — ยอดคิดที่ src/lib/money.ts
  *   5. ทุก statement ผูกด้วย userId ของ session (eq(transactions.userId, …)) — ลบ/แก้ของคนอื่นไม่ได้
@@ -24,9 +25,46 @@ export type Session = { userId: string };
 
 /** input ผิดกติกาของผู้ใช้ (ไม่ใช่บั๊ก) — server action ควรตอบเป็นข้อความให้ผู้ใช้ ไม่ใช่ 500 */
 export class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'ValidationError';
+  }
+}
+
+/** รหัส error ของ PG ที่แปลเป็นข้อความผู้ใช้ (กฎข้อ 2 + design §4: ห้ามให้ SQL/ศัพท์เทคนิคถึงผู้ใช้) */
+const DB_ERROR_MESSAGES: Record<string, string> = {
+  '22P02': 'รูปแบบข้อมูลไม่ถูกต้อง', // uuid ผิดรูป ฯลฯ
+  '23503': 'ไม่พบกระเป๋าเงินหรือหมวดที่อ้างถึง (หรือไม่ใช่ของผู้ใช้คนนี้)', // FK: ไม่มีอยู่/ข้ามผู้ใช้/kind ไม่ตรง
+  '23514': 'ข้อมูลไม่ตรงกติกาของรายการ', // check ของ DB
+};
+
+/** SQLSTATE จาก error ของ drizzle/PGlite — มันซ้อนกันอยู่ที่ cause */
+function pgCode(error: unknown): string | undefined {
+  for (let node: unknown = error, depth = 0; node && depth < 4; depth++) {
+    const code = (node as { code?: unknown }).code;
+    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
+    node = (node as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+/**
+ * แปล error ดิบของ DB → ValidationError ที่จุดเดียว (error เดิมคงไว้ที่ cause + log ไว้ debug)
+ * รหัสที่ไม่รู้จัก = คืน error เดิม (บั๊กจริง/DB ล่ม ต้องเห็น stack ไม่ใช่กลายเป็นข้อความผู้ใช้)
+ */
+export function toUserError(error: unknown): unknown {
+  const message = DB_ERROR_MESSAGES[pgCode(error) ?? ''];
+  if (!message) return error;
+  console.error('[jodjai] transaction write rejected by DB:', error);
+  return new ValidationError(message, { cause: error });
+}
+
+/** รันคำสั่ง DB แล้วแปล error ที่ผู้ใช้ทำได้ (uuid/FK/check) ให้เป็นข้อความไทย */
+async function guardWrite<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    throw toUserError(error);
   }
 }
 
@@ -127,13 +165,22 @@ export type TransactionPatch = Partial<
   Pick<ValidTransaction, 'amount' | 'accountId' | 'toAccountId' | 'categoryId' | 'note' | 'occurredAt'>
 >;
 
-/** เพิ่มรายการ — userId มาจาก session (พารามิเตอร์) ไม่ใช่จาก input */
+/**
+ * ความหมายของ `occurredAt` ใน patch: ส่ง `null` หรือ `''` = **คงค่าเดิม** (ไม่ใช่ล้าง — คอลัมน์เป็น not null ล้างไม่ได้)
+ * ต่างจาก add ที่ไม่ส่ง = DB ใส่ now() · ส่งค่าจริงใน patch = เปลี่ยนเป็นค่านั้น
+ */
+
+/**
+ * เพิ่มรายการ — userId มาจาก session (พารามิเตอร์) ไม่ใช่จาก input
+ * `occurredAt` ไม่ส่ง/ส่ง '' = ให้ DB ใส่ now() (เวลาที่บันทึกจริง) — คนละความหมายกับ patch ของ update ที่ส่ง null = คงค่าเดิม
+ */
 export async function addTransaction(db: Db, session: Session, input: unknown): Promise<TxnRow> {
   const data = validateTransaction(input);
 
-  const rows = await db
-    .insert(transactions)
-    .values({
+  const rows = await guardWrite(() =>
+    db
+      .insert(transactions)
+      .values({
       userId: session.userId,
       kind: data.kind,
       amount: data.amount,
@@ -142,9 +189,10 @@ export async function addTransaction(db: Db, session: Session, input: unknown): 
       categoryId: data.categoryId,
       currency: CURRENCY,
       note: data.note,
-      ...(data.occurredAt ? { occurredAt: data.occurredAt } : {}),
-    })
-    .returning(TXN_COLUMNS);
+        ...(data.occurredAt ? { occurredAt: data.occurredAt } : {}),
+      })
+      .returning(TXN_COLUMNS),
+  );
 
   return toRows(rows)[0];
 }
@@ -171,10 +219,12 @@ export async function updateTransaction(
     throw new ValidationError('เปลี่ยนประเภทรายการไม่ได้ — ให้ลบแล้วสร้างใหม่');
   }
 
-  const current = await db
-    .select({ ...TXN_COLUMNS, note: transactions.note })
-    .from(transactions)
-    .where(ownLiveRow(session, rowId));
+  const current = await guardWrite(() =>
+    db
+      .select({ ...TXN_COLUMNS, note: transactions.note })
+      .from(transactions)
+      .where(ownLiveRow(session, rowId)),
+  );
   if (current.length === 0) throw new ValidationError('ไม่พบรายการนี้ (อาจถูกลบไปแล้วหรือไม่ใช่ของคุณ)');
 
   const before = current[0];
@@ -189,19 +239,26 @@ export async function updateTransaction(
     ...(patch as Record<string, unknown>),
   });
 
-  const rows = await db
-    .update(transactions)
-    .set({
-      amount: merged.amount,
-      accountId: merged.accountId,
-      toAccountId: merged.toAccountId,
-      categoryId: merged.categoryId,
-      note: merged.note,
-      ...(merged.occurredAt ? { occurredAt: merged.occurredAt } : {}),
-    })
-    .where(ownLiveRow(session, rowId))
-    .returning(TXN_COLUMNS);
+  const rows = await guardWrite(() =>
+    db
+      .update(transactions)
+      .set({
+        amount: merged.amount,
+        accountId: merged.accountId,
+        toAccountId: merged.toAccountId,
+        categoryId: merged.categoryId,
+        note: merged.note,
+        ...(merged.occurredAt ? { occurredAt: merged.occurredAt } : {}),
+      })
+      .where(ownLiveRow(session, rowId))
+      .returning(TXN_COLUMNS),
+  );
 
+  // (A) แพ้การแข่ง: แถวถูกลบ/หายไประหว่าง select กับ update → ต้องได้ ValidationError แบบเดียวกับ softDelete
+  // (ไม่ใช่ toRows([])[0] = undefined ที่ผู้เรียกไปพังเป็น TypeError = 500)
+  if (rows.length === 0) {
+    throw new ValidationError('ไม่พบรายการนี้ (อาจถูกลบไปแล้วหรือไม่ใช่ของคุณ)');
+  }
   return toRows(rows)[0];
 }
 
@@ -213,11 +270,13 @@ export async function softDeleteTransaction(
 ): Promise<{ id: string }> {
   const rowId = requiredText(id, 'id ของรายการ');
 
-  const rows = await db
-    .update(transactions)
-    .set({ deletedAt: new Date() })
-    .where(ownLiveRow(session, rowId))
-    .returning({ id: transactions.id });
+  const rows = await guardWrite(() =>
+    db
+      .update(transactions)
+      .set({ deletedAt: new Date() })
+      .where(ownLiveRow(session, rowId))
+      .returning({ id: transactions.id }),
+  );
 
   if (rows.length === 0) {
     throw new ValidationError('ไม่พบรายการนี้ (อาจถูกลบไปแล้วหรือไม่ใช่ของคุณ)');
