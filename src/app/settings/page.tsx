@@ -35,17 +35,28 @@ export default async function SettingsPage() {
         </div>
       </section>
       <ul className="overflow-hidden rounded-card border border-border bg-surface">
-        <li className="border-b border-border px-4">
-          <div className="flex min-h-14 items-center justify-between gap-3">
+        {/* หมวดหมู่ + กระเป๋าเงิน — หน้าที่ทำงานจริงแล้ว (wave 9) */}
+        <li className="border-b border-border">
+          <Link href="/settings/categories" className="flex min-h-14 items-center justify-between gap-3 px-4">
             <span>หมวดหมู่</span>
-            <span className="text-[13px] text-text-muted">เร็ว ๆ นี้</span>
-          </div>
+            <span className="flex items-center gap-1 text-[13px] text-text-muted">
+              เพิ่ม/แก้/เลิกใช้
+              <svg className="size-4" aria-hidden="true">
+                <use href="#i-chevron-right" />
+              </svg>
+            </span>
+          </Link>
         </li>
-        <li className="border-b border-border px-4">
-          <div className="flex min-h-14 items-center justify-between gap-3">
+        <li className="border-b border-border">
+          <Link href="/settings/accounts" className="flex min-h-14 items-center justify-between gap-3 px-4">
             <span>กระเป๋าเงิน</span>
-            <span className="text-[13px] text-text-muted">เร็ว ๆ นี้</span>
-          </div>
+            <span className="flex items-center gap-1 text-[13px] text-text-muted">
+              เพิ่ม/แก้/เลิกใช้
+              <svg className="size-4" aria-hidden="true">
+                <use href="#i-chevron-right" />
+              </svg>
+            </span>
+          </Link>
         </li>
         {/* ตั้งงบต่อหมวด — หน้าที่ทำงานจริงแล้ว (ข้อเสนอ §2) */}
         <li className="border-b border-border">
