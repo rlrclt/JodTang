@@ -15,6 +15,13 @@
  *      → คืน drizzle instance ที่ห่อ client ไว้ แล้ว "รอความพร้อมตอนยิง query แรก" ไม่ใช่ตอนสร้าง
  *      ผู้เรียกจึงได้ Db กลับไปแบบ sync เหมือนเดิม โดยไม่ต้องแก้ src/app/** หรือ src/lib/**
  *   4. ไฟล์ DB อยู่ที่ ./.pglite (อยู่ใน .gitignore) — ข้อมูลในเครื่องเท่านั้น ห้าม commit
+ *   5. PGlite เป็น postgres ใน WASM ที่อยู่ในหน่วยความจำของ process ตัวเอง → **1 data dir ต้องมี instance เดียวต่อ process**
+ *      instance ที่เปิดค้างไว้ถือ snapshot ของตัวเอง ไม่มี invalidation ข้าม instance
+ *      → เปิด 2 instance บน dir เดียวกัน (เช่นสอง process หรือเดิมคือหลาย module copy ใน next dev)
+ *        แล้ว write ของตัวหนึ่งจะไม่ปรากฏให้อีกตัวอ่าน จนกว่าจะปิด/เปิดใหม่
+ *      - ภายใน process แก้แล้วด้วย cache บน globalThis (getDevDb) — ทุก compilation layer ของ next dev ใช้ตัวเดียวกัน
+ *      - ข้าม process **ยังไม่มี lock**: อย่ารัน `next dev` สองตัว (หรือ dev + สคริปต์) ชี้ PGLITE_DIR เดียวกันพร้อมกัน
+ *        ถ้าจำเป็นให้ตั้ง PGLITE_DIR คนละโฟลเดอร์ · และถ้าต้องทดสอบ write flow ให้ใช้ Neon (docs/SETUP.md)
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -40,11 +47,21 @@ type DevDb = {
   close: () => Promise<void>;
 };
 
-let singleton: DevDb | undefined;
+/**
+ * cache ตัว instance ไว้บน `globalThis` ไม่ใช่ตัวแปรระดับโมดูล
+ *
+ * ทำไม: `next dev` โหลดไฟล์นี้หลายครั้งใน process เดียวกัน — แต่ละ compilation layer (RSC/page กับ
+ * route handler/server action) มี module registry คนละชุด → ตัวแปรระดับโมดูลได้ PGlite คนละตัว
+ * ทั้งที่ชี้ data dir เดียวกัน · PGlite (postgres ใน WASM) ไม่มี invalidation ข้าม instance
+ * → write ที่ layer หนึ่ง อีก layer ยังอ่าน snapshot เก่าของตัวเอง (เขียนแล้วหน้าเว็บไม่เห็นจนกว่าจะรีสตาร์ท)
+ * `globalThis` เป็นที่เดียวที่ทุก layer ใน process เดียวกันเห็นร่วมกัน
+ */
+const devDbCache = globalThis as typeof globalThis & { __jodjaiDevDb?: DevDb };
 
 /** สร้าง PGlite + drizzle ที่รอความพร้อมเอง (ดูหมายเหตุ 3 หัวไฟล์) */
 function create(): DevDb {
   const pg = new PGlite(DEV_DB_DIR);
+  console.log(`[jodjai] dev DB: เปิด PGlite 1 ตัวต่อ process (pid=${process.pid} dir=${DEV_DB_DIR})`);
 
   /** memo: รันครั้งเดียวต่อ process · ถ้าพังจะพังทุก query ด้วย error เดิม (ไม่กลืนแล้วไปต่อ) */
   const ready = (async () => {
@@ -99,10 +116,10 @@ function create(): DevDb {
   };
 }
 
-/** dev DB ของ process นี้ (ตัวเดียว) — sync เหมือน getDb() ของ Neon */
+/** dev DB ของ process นี้ (ตัวเดียว ทุก layer ใช้ร่วมกัน) — sync เหมือน getDb() ของ Neon */
 export function getDevDb(): Db {
-  singleton ??= create();
-  return singleton.db;
+  devDbCache.__jodjaiDevDb ??= create();
+  return devDbCache.__jodjaiDevDb.db;
 }
 
 /**
@@ -110,7 +127,7 @@ export function getDevDb(): Db {
  * ไม่มี dev DB เปิดอยู่ = ไม่ทำอะไร (สคริปต์ที่รันแต่โหมด Neon เรียกได้โดยไม่พัง)
  */
 export async function closeDevDb(): Promise<void> {
-  const open = singleton;
-  singleton = undefined;
+  const open = devDbCache.__jodjaiDevDb;
+  devDbCache.__jodjaiDevDb = undefined;
   await open?.close();
 }

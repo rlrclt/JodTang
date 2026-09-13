@@ -1,11 +1,13 @@
 import Link from 'next/link';
 
+import { LoadFailed } from '@/components/LoadFailed';
 import { RetryBar } from '@/components/RetryBar';
 import { getDb } from '@/db';
 import { listBudgetProgress } from '@/db/queries/budgets';
 import { listCategories } from '@/db/queries/categories';
 import { formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
-import { requireSession } from '@/lib/session';
+import { isNextControlFlow } from '@/lib/next-signals';
+import { gateSession } from '@/lib/session';
 
 import type { BudgetItem } from './BudgetSheet';
 import { BudgetList } from './BudgetList';
@@ -17,7 +19,9 @@ export const metadata = { title: 'งบประมาณ · จดจ่าย
  * รวม 2 แหล่ง: หมวดรายจ่ายที่ยังใช้อยู่ทั้งหมด (ตั้งได้) + งบของหมวดที่ถูก archive ไปแล้ว (ต้องเห็น ไม่ซ่อน)
  */
 export default async function BudgetsPage() {
-  const { userId } = await requireSession();
+  const gate = await gateSession();
+  if (gate.unavailable) return <LoadFailed />;
+  const { userId } = gate.user;
   const db = getDb();
   const periodMonth = periodMonthOfBkk();
   const periodLabel = formatMonthLabelTh(periodMonth);
@@ -52,6 +56,7 @@ export default async function BudgetsPage() {
     }
     items = Object.values(byCategory);
   } catch (error) {
+    if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
     // ตัวเลขที่โหลดไม่ได้ต้องไม่ล้มทั้งหน้า: บอกเป็นแถบ + ปุ่มลองใหม่ (design §4)
     console.error('[jodjai] โหลดงบประมาณไม่สำเร็จ:', error);
   }

@@ -1,23 +1,26 @@
 /* จดจ่าย service worker — design.md §6
  *
- * - cache app shell (หน้าแรก/ตั้งค่า/ไอคอน) เป็นหลัก ไม่แคชข้อมูลการเงินแบบยาว
- * - ข้อมูลที่มียอด (เอกสาร HTML) ใช้ stale-while-revalidate สั้น ๆ → เปิดแอปแล้วเห็นยอดจากแคชก่อน ตัวเลขจริงตามมาทีหลัง
+ * ⛔ กติกาที่ห้ามละเมิด: **ห้ามแคช HTML ของ route ที่ต้องล็อกอิน** (หน้าแรก/รายการ/สรุป/ตั้งค่า/งบ)
+ *    HTML พวกนั้นมีข้อมูลการเงินของผู้ใช้อยู่ในตัว — เคยแคช '/' แบบ stale-while-revalidate แล้วเจอของจริงว่า
+ *    สลับบัญชี/ออกจากระบบแล้วยังเสิร์ฟหน้าของ "ผู้ใช้คนก่อน" จาก cache (ข้อมูลรั่วข้ามบัญชี)
+ *    → navigation ทุกตัว = network-only (ไม่เก็บ ไม่เสิร์ฟของเก่า) · ที่แคชได้คือ static asset ที่ไม่มีข้อมูลผู้ใช้
+ *    ราคาที่จ่าย: ออฟไลน์เปิดหน้าที่มียอดไม่ได้ (ยอมรับ — PLAN §1 "offline shell" หมายถึงโครงแอป ไม่ใช่ข้อมูลการเงิน)
  * - ไม่แตะคำขอเขียนข้อมูล (POST/PUT/PATCH/DELETE) และไม่แคช /api/ (credential/session)
+ * - cache สูงสุด: ไฟล์ JS/CSS/ไอคอน/ฟอนต์ เท่านั้น
  *
- * ponytail: TTL 60 วิ + ไม่มีคิวออฟไลน์ (design §7: ออฟไลน์ v1 = อ่านอย่างเดียว)
- *   → ถ้าจะเขียนตอนออฟไลน์ ต้องเพิ่มคิว + client_id (idempotency) ที่ฝั่งแอป ไม่ใช่ยัดใน SW
+ * เรื่องการล้าง: ตอน activate จะลบ cache ที่ไม่ใช่ชื่อรุ่นปัจจุบัน (ล้างของเก่าที่ค้างในเครื่องผู้ใช้ทันที)
+ * และฝั่งหน้าเว็บล้าง cache storage ตอน sign out / sign in (src/components/AuthButtons.tsx)
  */
-const CACHE = 'jodjai-v1';
-const SHELL = ['/', '/settings', '/icons/icon-192.png'];
-const DATA_TTL_MS = 60_000;
-const STAMP = 'x-sw-cached-at';
+const CACHE = 'jodjai-static-v2';
+const PRECACHE = ['/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png'];
+/** ไฟล์ที่ไม่ขึ้นกับผู้ใช้ — ทุกอย่างนอกจากนี้ไม่แคช */
+const STATIC_RE = /\.(?:js|mjs|css|woff2?|ttf|otf|png|jpe?g|svg|webp|avif|ico)$/i;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE);
-      // ทีละตัว: ตัวใดพลาด (เช่น ยังไม่ล็อกอิน) ต้องไม่ทำให้ install ล้มทั้งชุด
-      await Promise.all(SHELL.map((url) => cache.add(url).catch(() => {})));
+      await Promise.all(PRECACHE.map((url) => cache.add(url).catch(() => undefined)));
       await self.skipWaiting();
     })(),
   );
@@ -26,6 +29,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // ลบทุก cache ที่ไม่ใช่รุ่นนี้ — ของเดิม (jodjai-v1) มี HTML ที่มียอดเงินของผู้ใช้คนก่อนค้างอยู่
       const keys = await caches.keys();
       await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
       await self.clients.claim();
@@ -33,69 +37,34 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/**
- * เก็บสำเนาพร้อมเวลาที่แคช (ไว้ตัดสินความสดของข้อมูล)
- * ต้องอ่านสำเนา (clone) แล้วสร้าง Response ใหม่ — ถ้าเอา response.body ตัวเดียวไปทั้ง cache.put และคืนให้เบราว์เซอร์
- * body จะถูกกินไปครึ่งทาง → เบราว์เซอร์ได้ body ว่าง = ERR_FAILED (เจอจริงตอนทดสอบ)
- */
-async function put(cache, request, response) {
-  const body = await response.clone().arrayBuffer();
-  const headers = new Headers(response.headers);
-  headers.set(STAMP, String(Date.now()));
-  await cache.put(request, new Response(body, { status: response.status, statusText: response.statusText, headers }));
-  return response;
-}
+/** static asset: ของในแคชใช้ได้เลย ไม่มีก็โหลดแล้วเก็บ (ไม่มีข้อมูลผู้ใช้ จึงไม่ต้องกลัวข้ามบัญชี) */
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
 
-/** ข้อมูลที่มียอด: ของในแคชยังสด → คืนเลยแล้วค่อยอัปเดตเบื้องหลัง · ไม่สด/ไม่มี → รอเครือข่าย (พลาดค่อยใช้ของเก่า) */
-async function staleWhileRevalidate(event, cache) {
-  const cached = await cache.match(event.request);
-  const fresh = cached ? Date.now() - Number(cached.headers.get(STAMP) ?? 0) < DATA_TTL_MS : false;
-  const network = fetch(event.request)
-    .then((response) => (response && response.ok ? put(cache, event.request, response) : response))
-    .catch(() => null);
-
-  if (cached && fresh) {
-    event.waitUntil(network);
-    return cached;
+  try {
+    const response = await fetch(request);
+    // clone() ก่อนเก็บ: ถ้าใช้ body ตัวเดียวกันทั้ง cache.put และคืนให้เบราว์เซอร์ body จะถูกกินไปครึ่งทาง (ERR_FAILED)
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch {
+    return cached ?? Response.error();
   }
-  return (await network) ?? cached ?? Response.error();
 }
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET') return; // เขียนข้อมูล = ผ่านเครือข่ายเท่านั้น (อ่านอย่างเดียวตอนออฟไลน์)
+  if (request.method !== 'GET') return;
+
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/')) return; // session/credential ห้ามแคช
 
-  event.respondWith(
-    (async () => {
-      const cache = await caches.open(CACHE);
+  // เอกสาร HTML (รวม navigation ทุกแบบ) = network-only — ห้ามแคช ห้ามเสิร์ฟของเก่า
+  if (request.mode === 'navigate' || request.destination === 'document') return;
 
-      // หน้าแรกมียอดเดือนนี้ → สั้น ๆ พอ (§6) · หน้าอื่น/ไฟล์ static = cache-first แล้วอัปเดตเบื้องหลัง
-      if (request.mode === 'navigate') {
-        if (url.pathname === '/') return staleWhileRevalidate(event, cache);
-        try {
-          const response = await fetch(request);
-          if (response.ok) await put(cache, request, response);
-          return response;
-        } catch {
-          return (await cache.match(request)) ?? (await cache.match('/')) ?? Response.error();
-        }
-      }
+  if (url.pathname.startsWith('/api/')) return;
+  if (!url.pathname.startsWith('/_next/static/') && !STATIC_RE.test(url.pathname)) return;
 
-      const cached = await cache.match(request);
-      if (cached) {
-        event.waitUntil(fetch(request).then((response) => (response.ok ? put(cache, request, response) : response)).catch(() => {}));
-        return cached;
-      }
-      try {
-        const response = await fetch(request);
-        if (response.ok && url.pathname.startsWith('/_next/static/')) await put(cache, request, response);
-        return response;
-      } catch {
-        return Response.error();
-      }
-    })(),
-  );
+  event.respondWith(cacheFirst(request));
 });

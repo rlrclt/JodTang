@@ -16,6 +16,8 @@ export type TransactionRowView = {
   categoryName: string | null;
   /** ชื่อโทเคนสี เช่น '--chart-6' (null = สีคงเหลือ) */
   categoryColor: string | null;
+  /** หมวดนี้เลิกใช้แล้ว — รายการเก่ายังอ้างถึงได้ ต้องบอกให้เห็น (minor 4e) */
+  categoryArchived: boolean;
 };
 
 const DAY_LABEL = new Intl.DateTimeFormat('th-TH', {
@@ -42,12 +44,17 @@ export function TransactionRow({ view }: { view: TransactionRowView }) {
         <span
           aria-hidden="true"
           className="size-2.5 shrink-0 rounded-pill"
-          style={{ background: view.categoryColor ? `var(${view.categoryColor})` : 'var(--balance)' }}
+          style={{
+            background: view.categoryColor ? `var(${view.categoryColor})` : 'var(--balance)',
+            // หมวดที่เลิกใช้แล้วหรี่จุดสีลง (สื่อด้วยคำในบรรทัดล่างด้วย ไม่ใช่สีอย่างเดียว — §1.1)
+            opacity: view.categoryArchived ? 0.5 : 1,
+          }}
         />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{view.categoryName ?? KIND_LABEL[view.kind]}</span>
           <span className="block truncate text-[13px] leading-[18px] text-text-muted">
             {view.dateLabel} · {KIND_LABEL[view.kind]}
+            {view.categoryArchived ? ' · เลิกใช้แล้ว' : ''}
           </span>
         </span>
         <span className={`num font-semibold ${amountColor}`}>{formatRowAmount(view)}</span>

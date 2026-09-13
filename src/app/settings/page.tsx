@@ -1,14 +1,17 @@
 import Link from 'next/link';
 
 import { SignOutButton } from '@/components/AuthButtons';
+import { LoadFailed } from '@/components/LoadFailed';
 import { InstallApp } from '@/components/Pwa';
 import { formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
-import { requireSession } from '@/lib/session';
+import { gateSession } from '@/lib/session';
 
 // design.md §3 แท็บ 4 (ตั้งค่า) — บัญชี/ออกจากระบบ + งบประมาณ ทำงานจริงแล้ว ส่วนที่เหลือยังเป็นโครง
 // ของจริงตาม §4 S6: หมวดหมู่ · กระเป๋าเงิน · ธีม
 export default async function SettingsPage() {
-  const { name, email } = await requireSession();
+  const gate = await gateSession();
+  if (gate.unavailable) return <LoadFailed />;
+  const { name, email } = gate.user;
 
   return (
     <div className="flex flex-col gap-4">

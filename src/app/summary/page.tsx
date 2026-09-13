@@ -2,13 +2,15 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 
 import { BudgetRow, BudgetSkeleton } from '@/components/BudgetProgress';
+import { LoadFailed } from '@/components/LoadFailed';
 import { RetryBar } from '@/components/RetryBar';
 import { getDb } from '@/db';
 import { listBudgetProgress } from '@/db/queries/budgets';
 import { TREND, TRANSACTIONS, categoryOf } from '@/lib/fixtures';
 import { type PeriodMonth, formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
 import { expenseByCategory, formatSatang, periodTotals } from '@/lib/money';
-import { requireSession } from '@/lib/session';
+import { isNextControlFlow } from '@/lib/next-signals';
+import { gateSession } from '@/lib/session';
 
 /**
  * บล็อกเทียบงบ — query ของตัวเองแล้วสตรีมเข้ามาด้วย Suspense (ข้อเสนอ §3)
@@ -19,6 +21,7 @@ async function BudgetSection({ userId, periodMonth }: { userId: string; periodMo
   try {
     rows = await listBudgetProgress(getDb(), userId, periodMonth);
   } catch (error) {
+    if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
     console.error('[jodjai] โหลดงบประมาณไม่สำเร็จ:', error);
     return <RetryBar message="โหลดงบไม่สำเร็จ" />;
   }
@@ -52,7 +55,9 @@ async function BudgetSection({ userId, periodMonth }: { userId: string; periodMo
  * รอบนี้: บล็อกเทียบงบใช้ข้อมูลจริง (listBudgetProgress) · แนวโน้ม/กราฟหมวดยังใช้ fixtures (งานถัดไป)
  */
 export default async function SummaryPage() {
-  const { userId } = await requireSession();
+  const gate = await gateSession();
+  if (gate.unavailable) return <LoadFailed />;
+  const { userId } = gate.user;
   const periodMonth = periodMonthOfBkk();
   const totals = periodTotals(TRANSACTIONS);
   const byCategory = expenseByCategory(TRANSACTIONS);
@@ -114,7 +119,7 @@ export default async function SummaryPage() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{category?.name ?? 'อื่น ๆ'}</span>
                 <span className="block text-[13px] leading-[18px] text-text-muted">
-                  {((amount / totals.expense) * 100).toFixed(1)}% ของรายจ่าย
+                  {totals.expense > 0 ? ((amount / totals.expense) * 100).toFixed(1) : '0.0'}% ของรายจ่าย
                 </span>
               </span>
               <span className="num font-semibold">{formatSatang(amount)}</span>

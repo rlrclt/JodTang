@@ -1,12 +1,14 @@
 import Link from 'next/link';
 
 import { TransactionList, dayLabel, type TransactionRowView } from '@/components/TransactionRow';
+import { LoadFailed } from '@/components/LoadFailed';
 import { getDb } from '@/db';
-import { listCategories, type CategoryRow } from '@/db/queries/categories';
+import { listCategoriesById } from '@/db/queries/categories';
 import { monthTotals, recentTransactions } from '@/db/queries/transactions';
 import { formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
 import { formatRowAmount, formatSatang } from '@/lib/money';
-import { requireSession } from '@/lib/session';
+import { isNextControlFlow } from '@/lib/next-signals';
+import { gateSession } from '@/lib/session';
 
 /** จำนวนแถวล่าสุดในหน้าแรก (design.md §4 S2) */
 const RECENT_LIMIT = 20;
@@ -17,23 +19,36 @@ const RECENT_LIMIT = 20;
  * เดือนก่อนหน้า/ถัดไป ยังกดไม่เปลี่ยนข้อมูล (ยังไม่ทำในรอบนี้)
  */
 export default async function HomePage() {
-  const { userId } = await requireSession();
-  const db = getDb();
+  const gate = await gateSession();
+  if (gate.unavailable) return <LoadFailed />;
+  const { userId } = gate.user;
   const periodMonth = periodMonthOfBkk();
 
   // ทุก query ผูก userId ของ session + กรอง deleted_at ให้แล้วในชั้น query (src/db/queries/transactions.ts)
-  const [totals, recent, categories] = await Promise.all([
-    monthTotals(db, userId, periodMonth),
-    recentTransactions(db, userId, RECENT_LIMIT),
-    listCategories(db, userId),
-  ]);
-
-  // ชื่อ/สีหมวดของแถว — Record เพราะคีย์เป็น id (uuid) สตริงล้วน
-  const categoryById: Record<string, CategoryRow> = {};
-  for (const category of categories) categoryById[category.id] = category;
+  let totals;
+  let recent;
+  let categoryById;
+  try {
+    [totals, recent] = await Promise.all([
+      monthTotals(getDb(), userId, periodMonth),
+      recentTransactions(getDb(), userId, RECENT_LIMIT),
+    ]);
+    // ชื่อ/สีหมวดของแถวที่แสดง — 1 query (listCategoriesById) และคืนหมวดที่ archive แล้วด้วย
+    // ไม่งั้นรายการเก่าของหมวดที่เลิกใช้จะเหลือแค่คำตาม kind (minor 4e)
+    categoryById = await listCategoriesById(
+      getDb(),
+      userId,
+      recent.map((txn) => txn.categoryId).filter((id): id is string => id != null),
+    );
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
+    // DB ล่ม/เน็ตขาด: ห้ามปล่อยให้ throw (ผู้ใช้จะเจอ 500 เปล่า/404 อังกฤษ) — แสดงข้อความไทย + ปุ่มลองใหม่
+    console.error('[jodjai] โหลดข้อมูลหน้าแรกไม่สำเร็จ:', error);
+    return <LoadFailed message="โหลดยอดเดือนนี้ไม่สำเร็จ" />;
+  }
 
   const recentViews: TransactionRowView[] = recent.map((txn) => {
-    const category = txn.categoryId ? categoryById[txn.categoryId] : undefined;
+    const category = txn.categoryId ? categoryById.get(txn.categoryId) : undefined;
     return {
       id: txn.id,
       kind: txn.kind,
@@ -41,6 +56,7 @@ export default async function HomePage() {
       dateLabel: dayLabel(txn.occurredAt),
       categoryName: category?.name ?? null,
       categoryColor: category?.color ?? null,
+      categoryArchived: category?.archivedAt != null,
     };
   });
 

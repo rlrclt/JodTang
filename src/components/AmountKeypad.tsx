@@ -62,6 +62,15 @@ type Props = {
  * - ตัวเลข tabular + ชิดขวา (§1.2)
  */
 export function AmountKeypad({ id, label, value, onChange, hint, inputRef, disabled }: Props) {
+  // ปุ่มที่กดแล้วไม่มีผลต้อง "ปิดให้เห็น" ไม่ใช่เงียบ ๆ (reviewer: พิมพ์ทศนิยมครบ 2 ตำแหน่งแล้วกดเลขต่อไม่ติด)
+  const fractionFull = /\.\d\d$/.test(value);
+  const digitsFull = value.replace('.', '').length >= MAX_DIGITS;
+  const isDead = (key: string) => {
+    if (key === 'back') return value === '';
+    if (key === '.') return value.includes('.');
+    return fractionFull || digitsFull;
+  };
+
   return (
     <>
       <label htmlFor={id} className="mt-3 block text-[13px] leading-[18px] text-text-muted">
@@ -105,7 +114,7 @@ export function AmountKeypad({ id, label, value, onChange, hint, inputRef, disab
           <button
             key={key}
             type="button"
-            disabled={disabled}
+            disabled={disabled || isDead(key)}
             onClick={() => onChange(nextAmount(value, key))}
             aria-label={key === 'back' ? 'ลบทีละตัว' : key === '.' ? 'จุดทศนิยม' : key}
             className="flex min-h-14 items-center justify-center rounded-input border border-border bg-surface-2 text-xl font-semibold active:scale-[0.98] disabled:opacity-40"

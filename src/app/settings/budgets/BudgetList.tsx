@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 
-import { RetryBar } from '@/components/RetryBar';
 import { formatSatang } from '@/lib/money';
 
 import { BudgetSheet, type BudgetItem } from './BudgetSheet';
@@ -52,7 +51,12 @@ export function BudgetList({ items, periodLabel }: { items: BudgetItem[]; period
   };
 
   if (items.length === 0) {
-    return <RetryBar message="ยังไม่มีหมวดรายจ่าย — เพิ่มหมวดก่อนจึงตั้งงบได้" />;
+    // ว่าง ≠ error: ไม่มีหมวดให้ตั้งงบ ไม่ใช่ "อัปเดตไม่สำเร็จ" (ไม่ใช้ RetryBar)
+    return (
+      <p className="rounded-card border border-border bg-surface p-4 text-text-muted">
+        ยังไม่มีหมวดรายจ่าย — เพิ่มหมวดก่อนจึงตั้งงบได้
+      </p>
+    );
   }
 
   return (

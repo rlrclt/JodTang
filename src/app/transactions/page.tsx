@@ -1,6 +1,7 @@
 import { TransactionList, type TransactionRowView } from '@/components/TransactionRow';
+import { LoadFailed } from '@/components/LoadFailed';
 import { MONTH_LABEL, TRANSACTIONS, categoryOf } from '@/lib/fixtures';
-import { requireSession } from '@/lib/session';
+import { gateSession } from '@/lib/session';
 
 // ตัวกรองตาม §4 S4 — เฟส 1 ยังกดไม่เปลี่ยนผลลัพธ์ (static placeholder ให้เห็นหน้าตา)
 const FILTERS = ['ทั้งหมด', 'รับ', 'จ่าย', 'โอน', 'อาหาร', 'ค่าห้อง', 'กันยายน'] as const;
@@ -10,7 +11,8 @@ const FILTERS = ['ทั้งหมด', 'รับ', 'จ่าย', 'โอ�
  * ที่เปลี่ยนรอบนี้: ต้องล็อกอินก่อนเข้า และส่งแถวในรูปแบบที่ component แสดงผลต้องการ
  */
 export default async function TransactionsPage() {
-  await requireSession();
+  const gate = await gateSession();
+  if (gate.unavailable) return <LoadFailed />;
 
   const rows: TransactionRowView[] = TRANSACTIONS.map((txn) => {
     const category = categoryOf(txn.categoryId);
@@ -21,6 +23,7 @@ export default async function TransactionsPage() {
       dateLabel: txn.dateLabel,
       categoryName: category?.name ?? null,
       categoryColor: category?.color ?? null,
+      categoryArchived: false, // fixtures ไม่มีหมวดที่ archive (ของจริงดู src/app/page.tsx)
     };
   });
 

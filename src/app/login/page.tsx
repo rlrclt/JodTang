@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { LoginButtons } from '@/components/AuthButtons';
+import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
 
 export const metadata = { title: 'เข้าสู่ระบบ · จดจ่าย' };
@@ -17,7 +18,15 @@ function errorMessage(code: string | undefined): string | null {
  * ปุ่มเดียวต่อผู้ให้บริการ · ไม่มี modal · ล็อกอินแล้วเข้ามาที่นี่อีก → กลับหน้าแรก
  */
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  if (await getSession()) redirect('/');
+  // หน้าล็อกอินต้องเปิดได้เสมอ แม้ DB ล่ม (getSession จะโยน) — ตอนนั้นถือว่า "ยังไม่รู้ว่าเป็นใคร" แล้วโชว์ฟอร์มไว้
+  let signedIn = false;
+  try {
+    signedIn = Boolean(await getSession());
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next (build) — ห้ามกลืน
+    console.error('[jodjai] อ่าน session ไม่ได้ (หน้าเข้าสู่ระบบ):', error);
+  }
+  if (signedIn) redirect('/');
 
   // provider จะใช้ได้ต่อเมื่อมีคีย์ครบทั้งคู่ — คีย์ว่าง (ค่าเริ่มต้นของโปรเจกต์) ต้องไม่ทำให้หน้าพัง
   const enabled = {

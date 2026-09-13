@@ -16,6 +16,22 @@ type InstallPrompt = Event & {
 };
 
 /**
+ * ล้าง cache storage ทั้งหมดของ origin นี้ — เรียกตอน sign out และก่อน sign in
+ * เหตุผล: เครื่องที่เคยล็อกอินบัญชีหนึ่งต้องไม่มีของค้างที่อาจถูกเสิร์ฟให้บัญชีถัดไป
+ * (service worker แคชแต่ static asset แล้ว แต่การล้างเป็นตาข่ายชั้นที่สอง — ของเก่าจาก SW รุ่นก่อนยังอยู่ในเครื่องผู้ใช้)
+ * ล้มได้โดยไม่ทำให้ flow ล็อกอิน/ออกล้มตาม
+ */
+export async function clearCacheStorage(): Promise<void> {
+  if (!('caches' in window)) return;
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  } catch (error) {
+    console.error('[jodjai] ล้าง cache ไม่สำเร็จ:', error);
+  }
+}
+
+/**
  * สถานะออฟไลน์ของอุปกรณ์
  * ponytail: ใช้ navigator.onLine + event online/offline (ไม่ยิง ping เพราะเปลืองแบต/เน็ต)
  *   → เน็ตหลอก (ต่อ WiFi ได้แต่ไม่มีเน็ตจริง) จะยังขึ้นออนไลน์ · เริ่มค่า false เพื่อไม่ให้ SSR/CSR ไม่ตรงกัน

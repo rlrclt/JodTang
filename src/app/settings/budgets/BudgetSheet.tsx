@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AmountKeypad, inputFromSatang, satangFromInput } from '@/components/AmountKeypad';
 import { formatSatang } from '@/lib/money';
 
-import { clearBudgetAction, saveBudgetAction } from './actions';
+import { clearBudgetAction, saveBudgetAction, type BudgetResult } from './actions';
 
 /** หมวดรายจ่าย 1 แถวในหน้านี้ + งบของเดือนปัจจุบันถ้ามี (สตางค์) */
 export type BudgetItem = {
@@ -53,35 +53,45 @@ export function BudgetSheet({ item, periodLabel, onOptimistic, onDone, onClose }
   const satang = satangFromInput(amount);
   const canSave = !item.archived && satang !== null && satang > 0 && busy === null;
 
-  const save = async () => {
-    if (!canSave) return;
-    const next = satang;
-    setBusy('save');
+  /**
+   * ยิง optimistic → เรียก action → สำเร็จ = ปิด sheet · ไม่สำเร็จ (ok:false **หรือ** promise reject) = rollback + ข้อความไทย
+   * try/catch/finally จำเป็น: เน็ตขาดตอนกด = promise reject (TypeError: Failed to fetch) ไม่ใช่ ok:false
+   * ถ้าไม่ดักไว้ sheet จะค้าง (ปุ่ม disabled + "กำลังบันทึก…" + ไม่มี error) — เจอจริงตอน reviewer บล็อกเน็ต
+   */
+  const runWrite = async (
+    mode: 'save' | 'clear',
+    optimistic: number | null,
+    call: () => Promise<BudgetResult>,
+  ) => {
+    setBusy(mode);
     setError(null);
-    const rollback = onOptimistic(item.categoryId, next); // แถวขยับทันที
-    const result = await saveBudgetAction(item.categoryId, next);
-    if (result.ok) {
-      onDone();
-      return;
+    const rollback = onOptimistic(item.categoryId, optimistic);
+    try {
+      const result = await call();
+      if (result.ok) {
+        onDone();
+        return;
+      }
+      rollback();
+      setError(result.message);
+    } catch (failure) {
+      console.error('[jodjai] budget write failed:', failure);
+      rollback();
+      setError(mode === 'save' ? 'บันทึกไม่สำเร็จ ลองใหม่ (เน็ตมีปัญหา)' : 'ล้างงบไม่สำเร็จ ลองใหม่ (เน็ตมีปัญหา)');
+    } finally {
+      setBusy(null);
     }
-    rollback();
-    setBusy(null);
-    setError(result.message); // ค่าที่พิมพ์ยังอยู่ในช่อง (ไม่ล้าง)
   };
 
-  const clear = async () => {
-    if (!item.budgetId || busy !== null) return;
-    setBusy('clear');
-    setError(null);
-    const rollback = onOptimistic(item.categoryId, null);
-    const result = await clearBudgetAction(item.budgetId);
-    if (result.ok) {
-      onDone();
-      return;
-    }
-    rollback();
-    setBusy(null);
-    setError(result.message);
+  const save = () => {
+    if (!canSave) return;
+    runWrite('save', satang, () => saveBudgetAction(item.categoryId, satang));
+  };
+
+  const clear = () => {
+    const budgetId = item.budgetId;
+    if (!budgetId || busy !== null) return;
+    runWrite('clear', null, () => clearBudgetAction(budgetId));
   };
 
   return (
