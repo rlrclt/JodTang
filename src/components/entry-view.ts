@@ -1,0 +1,85 @@
+/**
+ * ตรรกะบริสุทธิ์ของชีต "เพิ่มรายการ" (wave 10b) — ทดสอบด้วย `node --test` ได้ ไม่มี DOM/React
+ * ที่นี่คือที่เดียวที่ตัดสิน "กระเป๋า/หมวดเริ่มต้นคืออะไร" และ "กดบันทึกได้ไหม เพราะอะไร"
+ */
+
+export type EntryKind = 'income' | 'expense' | 'transfer';
+
+export type EntryAccount = { id: string; name: string };
+export type EntryCategory = { id: string; name: string; color: string | null };
+
+export type EntryOptions = {
+  accounts: EntryAccount[];
+  categories: { income: EntryCategory[]; expense: EntryCategory[] };
+  /** กระเป๋าที่ใช้ล่าสุด (ข้ามใบที่ archive แล้ว) — null = ยังไม่เคยใช้ */
+  lastUsedAccountId: string | null;
+  /** หมวดของรายการล่าสุดของ kind นั้น — null = ยังไม่มีข้อมูลให้เดา */
+  suggested: { income: string | null; expense: string | null };
+};
+
+export const ENTRY_KIND_LABELS: Record<EntryKind, string> = {
+  income: 'รับ',
+  expense: 'จ่าย',
+  transfer: 'โอน',
+};
+
+/** ชื่อหมวดที่เสนอให้สร้าง 1 แตะ เมื่อผู้ใช้ยังไม่มีหมวดของ kind นั้นเลย (เรียงตามที่ใช้บ่อย) */
+export const SUGGESTED_CATEGORY_NAMES: Record<'income' | 'expense', readonly string[]> = {
+  expense: ['อาหาร', 'เดินทาง', 'ของใช้'],
+  income: ['เงินเดือน', 'ขายของ'],
+};
+
+/**
+ * กระเป๋าเริ่มต้น: ใบที่ใช้ล่าสุด → ใบแรกตาม createdAt
+ * (ค่า lastUsed ที่ชี้ไปใบที่ archive/หายไปแล้ว = ใช้ไม่ได้ ต้องตกไปใบแรก — กันเลือกกระเป๋าที่ไม่มีในลิสต์)
+ */
+export function defaultAccountId(options: EntryOptions): string | null {
+  const { accounts, lastUsedAccountId } = options;
+  if (accounts.length === 0) return null;
+  if (lastUsedAccountId && accounts.some((account) => account.id === lastUsedAccountId)) return lastUsedAccountId;
+  return accounts[0].id;
+}
+
+/**
+ * หมวดเริ่มต้นของ kind: ที่เดาจากรายการล่าสุด → หมวดแรกของ kind นั้น
+ * **ต้องเป็นหมวดของ kind ที่เลือกเสมอ** — สลับ รับ/จ่าย แล้วต้องได้หมวดของ kind ใหม่ ไม่ค้างของเดิม (acceptance 3)
+ */
+export function defaultCategoryId(options: EntryOptions, kind: 'income' | 'expense'): string | null {
+  const list = options.categories[kind];
+  const suggested = options.suggested[kind];
+  if (suggested && list.some((category) => category.id === suggested)) return suggested;
+  return list[0]?.id ?? null;
+}
+
+export type EntryDraft = {
+  kind: EntryKind;
+  /** สตางค์จากช่องกรอก (null = ยังไม่กรอก) */
+  amountSatang: number | null;
+  accountId: string | null;
+  toAccountId: string | null;
+  categoryId: string | null;
+  accountCount: number;
+};
+
+/**
+ * เหตุผลที่ "บันทึกไม่ได้" (null = บันทึกได้) — ข้อความเดียวที่ UI ใช้ทั้งปิดปุ่มและบอกผู้ใช้
+ * กติกา: ต้องมีกระเป๋าเสมอ (mutation บังคับ) · โอนต้องมี ≥2 ใบและปลายทางต่างจากต้นทาง · รับ/จ่ายต้องมีหมวด
+ */
+export function entryBlockReason(draft: EntryDraft): string | null {
+  if (draft.accountCount === 0) return 'ยังไม่มีกระเป๋า — กด "สร้างกระเป๋า เงินสด" ก่อนจึงบันทึกได้';
+
+  if (draft.kind === 'transfer') {
+    if (draft.accountCount < 2) return 'โอนต้องมีอย่างน้อย 2 กระเป๋า';
+    if (!draft.toAccountId) return 'เลือกกระเป๋าปลายทางก่อน';
+    if (draft.toAccountId === draft.accountId) return 'ปลายทางต้องไม่ใช่กระเป๋าเดียวกัน';
+    return null;
+  }
+
+  if (!draft.categoryId) return 'เลือกหมวดก่อนบันทึก';
+  return null;
+}
+
+/** โอนได้เฉพาะเมื่อมีกระเป๋าให้เลือกปลายทางอย่างน้อย 1 ใบที่ไม่ใช่ใบต้นทาง */
+export function canTransferWith(accountCount: number): boolean {
+  return accountCount >= 2;
+}

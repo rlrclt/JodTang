@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
+import { OptionGroup, optionChipClass } from '@/components/FormControls';
 import { buildHref, searchInputAfterUrlChange } from '@/components/transactions-view';
 
 export type CategoryOption = { id: string; name: string; color: string | null };
@@ -22,12 +23,6 @@ const KIND_CHIPS = [
   { id: 'expense', label: 'จ่าย' },
   { id: 'transfer', label: 'โอน' },
 ] as const;
-
-/** ปุ่ม chip แบบเดียวกันทั้งแอป (spec §2: active = border-border-strong + bg-surface-2 + font-bold) */
-const chipClass = (active: boolean) =>
-  `flex min-h-11 shrink-0 items-center rounded-btn border px-4 font-semibold ${
-    active ? 'border-border-strong bg-surface-2 font-bold' : 'border-border bg-surface text-text'
-  }`;
 
 /**
  * ช่องค้นหา — debounce 300ms แล้ว `router.replace` (ไม่ push: Back ต้องย้อนทีละหน้า ไม่ใช่ทีละตัวอักษร — spec §2)
@@ -116,11 +111,11 @@ export function FilterBar({
     <>
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="ตัวกรองรายการ">
         {KIND_CHIPS.map((chip) => (
-          <Link key={chip.label} href={buildHref(base, { kind: chip.id })} className={chipClass(active.kind === chip.id)}>
+          <Link key={chip.label} href={buildHref(base, { kind: chip.id })} className={optionChipClass(active.kind === chip.id)}>
             {chip.label}
           </Link>
         ))}
-        <button type="button" onClick={() => setOpen(true)} className={chipClass(sheetCount > 0)}>
+        <button type="button" onClick={() => setOpen(true)} className={optionChipClass(sheetCount > 0)}>
           ตัวกรอง{sheetCount > 0 ? ` (${sheetCount})` : ''}
         </button>
       </div>
@@ -206,54 +201,5 @@ function FilterSheet({
         </button>
       </div>
     </dialog>
-  );
-}
-
-/** กลุ่มตัวเลือกแบบเลือกได้ตัวเดียว — มี "ทั้งหมด" เป็นตัวแรกเสมอ */
-function OptionGroup({
-  label,
-  allLabel,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  allLabel: string;
-  options: readonly { id: string; name: string; color?: string | null }[];
-  value: string | undefined;
-  onChange: (next: string | undefined) => void;
-}) {
-  return (
-    <fieldset className="mt-2">
-      <legend className="text-[13px] leading-[18px] text-text-muted">{label}</legend>
-      <div className="mt-1 flex flex-wrap gap-2">
-        <button
-          type="button"
-          aria-pressed={value === undefined}
-          onClick={() => onChange(undefined)}
-          className={chipClass(value === undefined)}
-        >
-          {allLabel}
-        </button>
-        {options.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            aria-pressed={value === option.id}
-            onClick={() => onChange(option.id)}
-            className={chipClass(value === option.id)}
-          >
-            {option.color ? (
-              <span
-                aria-hidden="true"
-                className="mr-2 size-2.5 rounded-pill"
-                style={{ background: `var(${option.color})` }}
-              />
-            ) : null}
-            {option.name}
-          </button>
-        ))}
-      </div>
-    </fieldset>
   );
 }

@@ -3,7 +3,7 @@ import { formatRowAmount, type TxnKind } from '@/lib/money';
 const KIND_LABEL = { income: 'รับ', expense: 'จ่าย', transfer: 'โอน' } as const;
 
 /**
- * แถวสำหรับแสดงผล — หน้าจอ resolve ชื่อ/สีหมวดจากแหล่งข้อมูลของตัวเอง (DB หรือ fixtures) แล้วส่งเข้ามาสำเร็จรูป
+ * แถวสำหรับแสดงผล — หน้าจอ resolve ชื่อ/สีหมวดจาก DB แล้วส่งเข้ามาสำเร็จรูป
  * component นี้จึงไม่รู้จัก DB และไม่คำนวณเงินเอง (กติกา src/lib/money.ts)
  */
 export type TransactionRowView = {

@@ -56,21 +56,11 @@ type Props = {
 };
 
 /**
- * ช่องจำนวนเงิน + แป้นตัวเลขของแอป (design.md §2) — ใช้ร่วมกันทุก sheet (เพิ่มรายการ · ตั้งงบ)
- * - ช่องเป็น <input> จริงเสมอ (`inputmode="decimal"`): screen reader/คีย์บอร์ดระบบใช้ได้
- * - แป้นของแอปเป็น layer เสริม: ปุ่ม ≥56px · ปุ่มลัดยอด (20/50/100/500) แถวบนสุด
- * - ตัวเลข tabular + ชิดขวา (§1.2)
+ * ช่องจำนวนเงินของแอป (design.md §2) — <input> จริงเสมอ (`inputmode="decimal"`) เพื่อให้
+ * screen reader/คีย์บอร์ดระบบใช้ได้ · ตัวเลข tabular + ชิดขวา (§1.2)
+ * แยกจากแป้นเพื่อให้ชีต "เพิ่มรายการ" วางแถวสรุป/โน้ตคั่นกลางได้ (wave 10b spec §4)
  */
-export function AmountKeypad({ id, label, value, onChange, hint, inputRef, disabled }: Props) {
-  // ปุ่มที่กดแล้วไม่มีผลต้อง "ปิดให้เห็น" ไม่ใช่เงียบ ๆ (reviewer: พิมพ์ทศนิยมครบ 2 ตำแหน่งแล้วกดเลขต่อไม่ติด)
-  const fractionFull = /\.\d\d$/.test(value);
-  const digitsFull = value.replace('.', '').length >= MAX_DIGITS;
-  const isDead = (key: string) => {
-    if (key === 'back') return value === '';
-    if (key === '.') return value.includes('.');
-    return fractionFull || digitsFull;
-  };
-
+export function AmountInput({ id, label, value, onChange, hint, inputRef, disabled }: Props) {
   return (
     <>
       <label htmlFor={id} className="mt-3 block text-[13px] leading-[18px] text-text-muted">
@@ -94,7 +84,18 @@ export function AmountKeypad({ id, label, value, onChange, hint, inputRef, disab
         />
       </div>
       {hint ? <p className="mt-1 text-[13px] leading-[18px] text-text-muted">{hint}</p> : null}
+    </>
+  );
+}
 
+/** ปุ่มลัดยอด + แป้นตัวเลข (สลับพื้นที่กับตัวเลือกกระเป๋า/หมวดได้ — ความสูงรวมไม่เพิ่ม) */
+export function AmountKeys({ value, onChange, disabled }: Pick<Props, 'value' | 'onChange' | 'disabled'>) {
+  // ปุ่มที่กดแล้ว "ค่าไม่เปลี่ยน" ต้องปิดให้เห็น ไม่ใช่เงียบ ๆ (reviewer เจอเคส value='0' + กด 0)
+  // ใช้เกณฑ์เดียวกับการกดจริง: ปุ่มตาย ⇔ nextAmount(value, key) คืนค่าเดิม (ไม่ต้องไล่เงื่อนไขซ้ำ)
+  const isDead = (key: string) => nextAmount(value, key) === value;
+
+  return (
+    <>
       <div className="mt-2 grid grid-cols-4 gap-2">
         {QUICK.map((amount) => (
           <button
@@ -129,6 +130,19 @@ export function AmountKeypad({ id, label, value, onChange, hint, inputRef, disab
           </button>
         ))}
       </div>
+    </>
+  );
+}
+
+/**
+ * ช่องจำนวน + แป้นติดกัน (ผู้ใช้เดิม: sheet ตั้งงบ) — เท่ากับ AmountInput + AmountKeys
+ * ชีตที่ต้องแทรกแถวสรุป/โน้ตระหว่างสองส่วน ให้ประกอบเองจาก 2 component ข้างบน
+ */
+export function AmountKeypad(props: Props) {
+  return (
+    <>
+      <AmountInput {...props} />
+      <AmountKeys value={props.value} onChange={props.onChange} disabled={props.disabled} />
     </>
   );
 }
