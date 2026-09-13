@@ -238,3 +238,43 @@ test('ข้ามผู้ใช้: เห็น/แก้/archive ของ�
   assert.equal(ok.amount, 5000);
   assert.equal(ok.kind, 'income');
 });
+
+test('แพ้การแข่งตอน update: แถวถูก archive ระหว่าง select กับ update → ValidationError ไม่ใช่ undefined', async () => {
+  const row = await addCategory(db, SESSION_1, { kind: 'expense', name: 'หมวดแข่ง', sortOrder: 3 });
+
+  // intercept ที่ client ของ drizzle: หลัง SELECT สำเร็จ → archive แถวนั้นก่อนที่ SQL ของ update จะถูกส่ง
+  let raced = false;
+  const racingClient = new Proxy(pglite as unknown as Record<string, unknown>, {
+    get(target, prop) {
+      if (prop === 'query') {
+        return async (...args: unknown[]) => {
+          const result = await (Reflect.get(target, 'query') as (...a: unknown[]) => Promise<unknown>).apply(
+            target,
+            args,
+          );
+          if (!raced && /select/i.test(String(args[0]))) {
+            raced = true;
+            await (Reflect.get(target, 'exec') as (sql: string) => Promise<unknown>).call(
+              target,
+              `update categories set archived_at = now() where id = '${row.id}'`,
+            );
+          }
+          return result;
+        };
+      }
+      return Reflect.get(target, prop);
+    },
+  }) as unknown as typeof pglite;
+  const racing = drizzle(racingClient, { schema }) as unknown as Db;
+
+  await assert.rejects(
+    () => updateCategory(racing, SESSION_1, row.id, { name: 'แก้ไม่ทัน' }),
+    (error: unknown) => error instanceof ValidationError && /ไม่พบหมวดนี้/.test(error.message),
+    'ต้องได้ ValidationError (ถ้าไม่มี guard จะเป็น TypeError จาก undefined)',
+  );
+
+  const after = await rawCategory(row.id);
+  assert.equal(after.name, 'หมวดแข่ง', 'ชื่อต้องไม่ถูกเขียนทับ');
+  assert.equal(after.sort_order, 3);
+  assert.notEqual(after.archived_at, null, 'แถวต้องยังถูก archive อยู่');
+});

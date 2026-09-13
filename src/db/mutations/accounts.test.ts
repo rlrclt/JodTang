@@ -233,3 +233,45 @@ test('ข้ามผู้ใช้: เห็น/แก้/archive ของ�
   );
   assert.equal((await rawAccount(mine.id)).archived_at, null);
 });
+
+test('แพ้การแข่งตอน update: แถวถูก archive ระหว่าง select กับ update → ValidationError ไม่ใช่ undefined', async () => {
+  const row = await addAccount(db, SESSION_1, { name: 'กระเป๋าแข่ง', kind: 'cash', initialBalance: 5000 });
+
+  // intercept ที่ client ของ drizzle: หลัง SELECT สำเร็จ (ก่อน SQL ของ update จะถูกส่ง) ให้ archive แถวนั้นทิ้ง
+  // (จำลองเปิดสองแท็บ: แท็บหนึ่งกด archive อีกแท็บกดบันทึก)
+  let raced = false;
+  const racingClient = new Proxy(pglite as unknown as Record<string, unknown>, {
+    get(target, prop) {
+      if (prop === 'query') {
+        return async (...args: unknown[]) => {
+          const result = await (Reflect.get(target, 'query') as (...a: unknown[]) => Promise<unknown>).apply(
+            target,
+            args,
+          );
+          if (!raced && /select/i.test(String(args[0]))) {
+            raced = true;
+            await (Reflect.get(target, 'exec') as (sql: string) => Promise<unknown>).call(
+              target,
+              `update accounts set archived_at = now() where id = '${row.id}'`,
+            );
+          }
+          return result;
+        };
+      }
+      return Reflect.get(target, prop);
+    },
+  }) as unknown as typeof pglite;
+  const racing = drizzle(racingClient, { schema }) as unknown as Db;
+
+  await assert.rejects(
+    () => updateAccount(racing, SESSION_1, row.id, { name: 'แก้ไม่ทัน' }),
+    (error: unknown) => error instanceof ValidationError && /ไม่พบกระเป๋านี้/.test(error.message),
+    'ต้องได้ ValidationError (ถ้าไม่มี guard จะเป็น TypeError จาก undefined)',
+  );
+
+  // ข้อมูลไม่เสียหาย: แถวยังอยู่ ชื่อเดิม และถูก archive
+  const after = await rawAccount(row.id);
+  assert.equal(after.name, 'กระเป๋าแข่ง', 'ชื่อต้องไม่ถูกเขียนทับ');
+  assert.notEqual(after.archived_at, null, 'แถวต้องยังถูก archive อยู่');
+  assert.equal(Number(after.initial_balance), 5000);
+});
