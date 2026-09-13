@@ -61,6 +61,36 @@ export function toSatang(value: unknown, label = 'จำนวนเงิน'):
   return value;
 }
 
+/** เพดานที่บวกใน JS ได้แบบไม่เพี้ยน (2^53 − 1) — ใช้เทียบก่อนแปลง bigint เป็น number */
+const MAX_SAFE_SATANG = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * ยอดที่ **aggregate มาจาก DB** → สตางค์ (number)
+ * ต่างจาก toSatang() ตรงที่ตัวนี้รับค่าที่ไดรเวอร์ PG ส่งมาได้จริง: `sum(bigint)` กลับมาเป็น numeric (สตริง)
+ * หรือ bigint/int8 แล้วแต่ไดรเวอร์ — ห้ามใช้ Number(สตริง) ตรง ๆ เพราะค่าที่เกิน 2^53 จะถูกปัดเงียบ ๆ
+ * (ยอดเงินผิดโดยไม่มี error = ทางที่แย่ที่สุด) · ไม่มีแถว (sum = null) = 0
+ */
+export function satangFromDb(value: unknown, label = 'ยอดรวมจาก DB'): number {
+  if (value == null) return 0;
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(`${label}ไม่ใช่จำนวนเต็มที่ปลอดภัย (${value}) — ยอดเพี้ยนแล้ว ห้ามแสดง`);
+    }
+    return value;
+  }
+
+  let big: bigint;
+  try {
+    big = typeof value === 'bigint' ? value : BigInt(String(value).trim());
+  } catch {
+    throw new RangeError(`${label}อ่านเป็นจำนวนเต็มไม่ได้ (${String(value)})`);
+  }
+  if (big > MAX_SAFE_SATANG || big < -MAX_SAFE_SATANG) {
+    throw new RangeError(`${label}หลุดช่วง safe integer (${big}) — ยอดเพี้ยนแล้ว ห้ามแสดง`);
+  }
+  return Number(big);
+}
+
 /** แถวนี้ถูกนับเป็นยอด "รับ/จ่าย" ไหม — ที่เดียวที่ตัดสินกติกานี้ */
 export function isCounted(row: MoneyRow): boolean {
   return row.deletedAt == null && (row.kind === "income" || row.kind === "expense");

@@ -16,16 +16,17 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 
+import { periodMonthFromParam } from '../../lib/month.ts';
 import { periodTotals } from '../../lib/money.ts';
 import type { Db } from '../index.ts';
 import * as schema from '../schema.ts';
 import {
-  listTransactions,
+  listTransactionPage,
   monthExpenseByCategory,
   monthRows,
   monthTotals,
-  recentTransactions,
-  recentTransactionsQuery,
+  transactionPageQuery,
+  trendByMonth,
 } from './transactions.ts';
 
 const DDL = readFileSync(new URL('../../../docs/schema.sql', import.meta.url), 'utf8');
@@ -39,7 +40,7 @@ const C = (n: number) => `10000000-0000-0000-0000-0000000000${String(n).padStart
 const [C_FOOD, C_TRAVEL, C_RENT, C_SUPPLY, C_UTIL, C_COFFEE, C_SALARY, C_SALES, C_U2E, C_U2I] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(C);
 
 const SEPT = '2026-09-01';
-const AUG = '2026-08-01';
+const OCT = '2026-10-01';
 // ยอดที่ต้องได้ของ u1 เดือน ก.ย. (คิดมือไว้ล่วงหน้า ไม่ได้ derive จากโค้ดที่จะเทสต์)
 const SEPT_INCOME = 2_450_000; // 2,250,000 + 200,000
 const SEPT_EXPENSE = 1_284_000; // 18,500 + 32,000 + 910,000 + 124,000 + 190,000 + 9,500
@@ -108,6 +109,14 @@ await pglite.exec('vacuum analyze transactions');
 // cast เฉพาะชนิด driver ตรงนี้ ไม่กระทบชนิดฝั่งแอป
 const db = drizzle(pglite, { schema }) as unknown as Db;
 
+// นับ query จริงที่วิ่งเข้า PGlite (พิสูจน์ว่าแนวโน้ม 6 เดือน = 1 query)
+let queryCount = 0;
+const runQuery = pglite.query.bind(pglite);
+pglite.query = ((...args: Parameters<typeof runQuery>) => {
+  queryCount += 1;
+  return runQuery(...args);
+}) as typeof pglite.query;
+
 test('ก) monthTotals = ค่าที่คิดมือ + = periodTotals ของแถวชุดเดียวกัน', async () => {
   const rows = await monthRows(db, U1, SEPT);
   assert.equal(rows.length, 8, 'u1 เดือน ก.ย. ต้องมี 8 แถวรับ/จ่ายที่ยังไม่ถูกลบ');
@@ -135,7 +144,7 @@ test('ข) ไม่มีแถว/ยอดข้ามผู้ใช้ห�
 
   // ฝั่ง u2 ต้องเห็นของตัวเองครบ (พิสูจน์ว่า filter ทำงานจริง ไม่ใช่คืนค่าว่างเพราะเงื่อนไขพัง)
   assert.deepEqual(await monthTotals(db, U2, SEPT), { income: 900000, expense: 500000, balance: 400000 });
-  assert.equal((await recentTransactions(db, U2, 10)).length, 2);
+  assert.equal((await listTransactionPage(db, U2, { limit: 10 })).total, 2);
 });
 
 test('ค) แถว soft delete ไม่ถูกนับ (แต่ต้องมีอยู่จริงใน DB)', async () => {
@@ -181,159 +190,93 @@ test('expenseByCategory ของเดือน: รวมได้เท่า
   assert.equal([...byCat.values()].reduce((a, b) => a + b, 0), SEPT_EXPENSE);
 });
 
-test('หน้าแรก: เรียงใหม่->เก่า และ keyset ต่อหน้าไม่ซ้ำ/ไม่ข้าม', async () => {
-  const page1 = await recentTransactions(db, U1, 3);
-  assert.equal(page1.length, 3);
-  const ids = page1.map((row) => row.id);
-  assert.equal(new Set(ids).size, 3);
+test('แนวโน้ม 6 เดือน: เก่า→ใหม่ · เดือนว่างได้ 0 · ตรงกับ monthTotals ของเดือนนั้นเป๊ะ', async () => {
+  const trend = await trendByMonth(db, U1, OCT, 6);
 
-  const last = page1[page1.length - 1];
-  const page2 = await recentTransactions(db, U1, 3, { occurredAt: last.occurredAt, id: last.id });
-  assert.equal(page2.length, 3);
-  assert.ok(
-    page2.every((row) => !ids.includes(row.id)),
-    'หน้าถัดไปต้องไม่ซ้ำกับหน้าแรก',
-  );
-  assert.ok(
-    page2.every((row) => row.occurredAt.getTime() <= last.occurredAt.getTime()),
-    'หน้าถัดไปต้องเก่ากว่าหรือเท่ากับแถวสุดท้ายของหน้าแรก',
+  assert.deepEqual(
+    trend.map((row) => row.periodMonth),
+    ['2026-05-01', '2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01', '2026-10-01'],
+    'ต้องครบ 6 เดือนเรียงเก่า→ใหม่ และลงท้ายที่เดือนที่ขอ',
   );
 
-  // ไล่จนหมด: ทุกหน้าต่อกันด้วย keyset ต้องได้ครบทุกแถวของผู้ใช้คนนี้ (และไม่ซ้ำ)
-  // recentTransactions ไม่กรองเดือน → นับจากตารางจริงของ u1 ที่ยังไม่ถูกลบ (9 ก.ย. + 1 ส.ค. + 1 transfer = 11)
-  const raw = await pglite.query<{ n: number }>(`select count(*)::int as n from transactions where user_id = '${U1}' and deleted_at is null`);
-  const expected = raw.rows[0].n;
-  const all = [...page1, ...page2];
-  let cursor = { occurredAt: page2[2].occurredAt, id: page2[2].id };
-  for (let guard = 0; guard < 10; guard++) {
-    const next = await recentTransactions(db, U1, 3, cursor);
-    if (next.length === 0) break;
-    all.push(...next);
-    const tail = next[next.length - 1];
-    cursor = { occurredAt: tail.occurredAt, id: tail.id };
-  }
-  assert.equal(all.length, expected, 'keyset ต้องเก็บได้ครบทุกแถวโดยไม่ซ้ำ/ไม่ข้าม');
-  assert.equal(new Set(all.map((row) => row.id)).size, expected, 'ต้องไม่มี id ซ้ำข้ามหน้า');
-  for (let i = 1; i < all.length; i++) {
-    assert.ok(
-      all[i - 1].occurredAt.getTime() >= all[i].occurredAt.getTime(),
-      'ทั้งชุดต้องเรียงจากใหม่ไปเก่าต่อเนื่องกัน',
+  // ทุกเดือนต้องเท่ากับ monthTotals() ของเดือนนั้น (สูตรเงินอยู่ money.ts ที่เดียว — ห้ามมีสูตรที่สอง)
+  for (const month of trend) {
+    assert.deepEqual(
+      { income: month.income, expense: month.expense, balance: month.balance },
+      await monthTotals(db, U1, month.periodMonth),
+      `ยอดของ ${month.periodMonth} ต้องตรงกับ monthTotals`,
     );
   }
+
+  const emptyMonths = trend.filter((month) => month.income === 0 && month.expense === 0);
+  assert.ok(emptyMonths.length >= 2, 'เดือนที่ไม่มีข้อมูลต้องได้ 0 ไม่ใช่ขาดแถว');
   assert.ok(
-    all.every((row) => row.accountId === A1 || row.accountId === A2),
-    'ไม่มีแถวของผู้ใช้อื่นปนมา',
+    trend.every((month) => Number.isSafeInteger(month.balance)),
+    'ยอดคงเหลือต้องเป็นสตางค์จำนวนเต็ม',
   );
+  assert.ok(trend.some((month) => month.expense > 0), 'ต้องมีเดือนที่มีข้อมูลจริง (ไม่งั้นเทสต์ผ่านแบบหลอก ๆ)');
 });
 
-test('รายการทั้งหมด: filter kind/หมวด/เดือน + ค้นหา note', async () => {
-  assert.equal((await listTransactions(db, U1, { periodMonth: SEPT, kind: 'expense' })).length, 6);
-  assert.equal((await listTransactions(db, U1, { periodMonth: SEPT, kind: 'income' })).length, 2);
+test('แนวโน้ม: 1 query เท่านั้น (ไม่ใช่ 6) และไม่ปนข้อมูลผู้ใช้อื่น', async () => {
+  queryCount = 0;
+  const u1Trend = await trendByMonth(db, U1, OCT, 6);
+  assert.equal(queryCount, 1, 'ทั้ง 6 เดือนต้องมาจาก query เดียว');
 
-  const rent = await listTransactions(db, U1, { periodMonth: SEPT, categoryId: C_RENT });
-  assert.equal(rent.length, 1);
-  assert.equal(rent[0].amount, 910000);
+  const u2Trend = await trendByMonth(db, U2, OCT, 6);
+  assert.notDeepEqual(
+    u2Trend.find((month) => month.periodMonth === SEPT),
+    u1Trend.find((month) => month.periodMonth === SEPT),
+    'ยอดของ u2 กับ u1 ต้องไม่เหมือนกัน (พิสูจน์ว่าไม่ได้อ่านข้ามผู้ใช้)',
+  );
+  const u2September = u2Trend.find((month) => month.periodMonth === SEPT);
+  assert.deepEqual(
+    { income: u2September?.income, expense: u2September?.expense, balance: u2September?.balance },
+    await monthTotals(db, U2, SEPT),
+    'ยอดของ u2 ในแนวโน้มต้องเท่ากับ monthTotals ของ u2',
+  );
 
-  const searched = await listTransactions(db, U1, { search: 'ข้าว' });
-  assert.equal(searched.length, 1);
-  assert.equal(searched[0].categoryId, C_FOOD);
-
-  const august = await listTransactions(db, U1, { periodMonth: AUG });
-  assert.equal(august.length, 1);
-  assert.equal(august[0].amount, 777000, 'เดือน ส.ค. แยกจาก ก.ย. ด้วย occurred_month_bkk');
-
-  // ค้นหาต้องไม่ข้ามผู้ใช้: คำค้นเดียวกันในมุมของ u2 ต้องไม่ได้ของ u1
-  assert.equal((await listTransactions(db, U2, { search: 'ข้าว' })).length, 0);
+  await assert.rejects(trendByMonth(db, U1, OCT, 0), TypeError, 'months ต้อง ≥ 1');
+  await assert.rejects(trendByMonth(db, U1, '2026-10-15', 6), TypeError, 'งวดเดือนต้องเป็นวันแรกของเดือน');
 });
 
-test('keyset: แถวที่ occurred_at เท่ากันเป๊ะ ต้องไม่ข้าม/ไม่ซ้ำ (เทียบ id เมื่อเวลาเท่ากัน)', async () => {
-  // fixture ต้องมีกลุ่มเวลาเท่ากัน ≥3 แถว อย่างน้อย 2 กลุ่ม ไม่งั้นเทสต์นี้พิสูจน์อะไรไม่ได้
-  const groups = await pglite.query<{ n: number }>(`
-    select count(*)::int as n from (
-      select occurred_at from transactions where user_id = '${U1}' and deleted_at is null
-      group by occurred_at having count(*) >= 3
-    ) g`);
-  assert.ok(groups.rows[0].n >= 2, `fixture ต้องมีกลุ่มเวลาเท่ากัน ≥3 อย่างน้อย 2 กลุ่ม (ได้ ${groups.rows[0].n})`);
-
-  const raw = await pglite.query<{ n: number }>(
-    `select count(*)::int as n from transactions where user_id = '${U1}' and deleted_at is null`,
-  );
-  const expected = raw.rows[0].n;
-
-  // ไล่ทีละ 2 แถวจนหมด (limit เล็ก = ตัดกลางกลุ่มเวลาซ้ำแน่ ๆ)
-  const all: Awaited<ReturnType<typeof recentTransactions>> = [];
-  let cursor: { occurredAt: Date; id: string } | undefined;
-  for (let guard = 0; guard < 100; guard++) {
-    const page = await recentTransactions(db, U1, 2, cursor);
-    if (page.length === 0) break;
-    all.push(...page);
-    const tail = page[page.length - 1];
-    cursor = { occurredAt: tail.occurredAt, id: tail.id };
+test('ค่าดิบจาก ?m= ต้องไม่ทำให้ trend พัง (เคสรีวิว: ?m=0000-01-01)', async () => {
+  // เส้นทางจริงของหน้าเว็บ: ?m= → periodMonthFromParam() → trendByMonth()
+  for (const raw of ['0000-01-01', '9999-12-01', '10000-01-01', 'abc', '', null]) {
+    const trend = await trendByMonth(db, U1, periodMonthFromParam(raw), 6);
+    assert.equal(trend.length, 6, `ต้องได้ 6 งวดสำหรับ ${JSON.stringify(raw)}`);
+    assert.ok(
+      trend.every((month) => /^\d{4}-(0[1-9]|1[0-2])-01$/.test(month.periodMonth)),
+      `งวดเดือนต้องเป็น 'YYYY-MM-01' ที่ PG รับได้ (${JSON.stringify(raw)})`,
+    );
   }
+  // และงวดสุดขอบที่รับได้ ต้องยัง query ได้จริง (ไม่ throw)
+  assert.equal((await trendByMonth(db, U1, periodMonthFromParam('9999-12-01'), 6)).length, 6);
 
-  assert.equal(all.length, expected, 'จำนวนรวมทุกหน้า = จำนวนแถวใน DB (เวลาซ้ำต้องไม่หาย)');
-  assert.equal(new Set(all.map((row) => row.id)).size, expected, 'ต้องไม่มี id ซ้ำข้ามหน้า');
-
-  // strict desc ตาม (occurredAt, id): เวลาเท่ากันต้องเทียบ id (uuid เทียบแบบ byte ตรงกับ PG)
-  for (let i = 1; i < all.length; i++) {
-    const prev = all[i - 1];
-    const next = all[i];
-    const ok =
-      prev.occurredAt.getTime() > next.occurredAt.getTime() ||
-      (prev.occurredAt.getTime() === next.occurredAt.getTime() && prev.id > next.id);
-    assert.ok(ok, `ลำดับผิดที่คู่ ${i}: ${prev.id} (${prev.occurredAt.toISOString()}) กับ ${next.id}`);
-  }
-
-  // และต้องตรงกับ query เดียวที่ไม่แบ่งหน้าเป๊ะ ๆ (ตัวตัดสินสุดท้ายเรื่อง tie-break)
-  const full = await recentTransactions(db, U1, 1000);
-  assert.deepEqual(
-    all.map((row) => row.id),
-    full.map((row) => row.id),
-  );
-  const tiedInFull = await pglite.query<{ n: number }>(`
-    select count(*)::int as n from transactions t
-    where t.user_id = '${U1}' and t.deleted_at is null
-      and t.occurred_at in (
-        select occurred_at from transactions where user_id = '${U1}' and deleted_at is null
-        group by occurred_at having count(*) > 1
-      )`);
-  assert.ok(tiedInFull.rows[0].n >= 10, `ต้องมีแถวที่อยู่ในกลุ่มเวลาซ้ำ ≥10 (ได้ ${tiedInFull.rows[0].n})`);
+  // ถ้ามีใครส่งค่าดิบข้ามชั้น param ไปตรง ๆ ต้องได้ TypeError ชัด ๆ ไม่ใช่ PG error ที่อ่านไม่ออก
+  await assert.rejects(trendByMonth(db, U1, '0000-01-01', 6), TypeError);
 });
 
-test('ค้นหา: escape อักขระพิเศษของ LIKE (% _ \\) — พิมพ์ _ ต้องไม่ match ตัวอื่น', async () => {
-  // 'a_b' ที่ไม่ escape จะ match ทั้ง 'a_b' และ 'axb' (วัดจากรีวิว) — ยอดเงินใช้แยกแถวเพราะ COLUMNS ไม่ได้ select note
-  assert.deepEqual(
-    (await listTransactions(db, U1, { search: 'a_b' })).map((row) => row.amount),
-    [6000],
-  );
-  assert.deepEqual(
-    (await listTransactions(db, U1, { search: 'axb' })).map((row) => row.amount),
-    [7000],
-  );
-  // '%' ที่ไม่ escape จะได้ทุกแถวที่มี note
-  assert.deepEqual(
-    (await listTransactions(db, U1, { search: '%' })).map((row) => row.amount),
-    [5000],
-  );
-  // '_' ที่ไม่ escape จะได้ทุกแถว (LIKE ใช้ _ เป็น wildcard หนึ่งตัวอักษร)
-  assert.deepEqual(
-    (await listTransactions(db, U1, { search: '_' })).map((row) => row.amount),
-    [6000],
-  );
-  // '\' ที่ไม่ escape จะทำให้ pattern ลงท้ายด้วย escape char = PG error → ต้องไม่พังและได้ 0 แถว
-  assert.deepEqual(await listTransactions(db, U1, { search: '\\' }), []);
-});
-
-test('ง) query หน้าแรกใช้ index transactions_user_recent_idx และไม่ต้อง Sort', async () => {
+test('ง) query ของหน้ารายการใช้ index (ไม่ Seq Scan) และเส้น "ล่าสุด N แถว" เรียงให้แล้ว ไม่ต้อง Sort', async () => {
   // ตารางเล็กมากในเทสต์ → planner เลือก seq scan ได้อย่างถูกต้องตามปกติ
   // ปิด seq scan เพื่อยืนยันว่า "index ตัวนี้ใช้กับ query นี้ได้จริง" (ไม่ได้พิสูจน์เรื่องความเร็วบนข้อมูลจริง)
+  const planFor = async (filters: Parameters<typeof transactionPageQuery>[2]) => {
+    const built = transactionPageQuery(db, U1, filters).toSQL();
+    return (
+      await pglite.query<{ 'QUERY PLAN': string }>(`explain (costs off) ${built.sql}`, built.params as never[])
+    ).rows
+      .map((row) => row['QUERY PLAN'])
+      .join('\n');
+  };
+
   await pglite.exec('set enable_seqscan = off');
-  const built = recentTransactionsQuery(db, U1, 20).toSQL();
-  const plan = (
-    await pglite.query<{ 'QUERY PLAN': string }>(`explain (costs off) ${built.sql}`, built.params as never[])
-  ).rows.map((row) => row['QUERY PLAN']).join('\n');
+  // (1) ไม่กรองเดือน = "ล่าสุด N แถว" → transactions_user_recent_idx เรียงให้แล้ว (ไม่ต้อง Sort)
+  const latest = await planFor({ limit: 20 });
+  // (2) กรองเดือน (เส้นที่หน้าแรก/รายการใช้จริง) → ต้องมี index อย่างน้อย 1 ตัว ไม่ใช่ Seq Scan
+  const monthPage = await planFor({ periodMonth: SEPT, limit: 20 });
   await pglite.exec('set enable_seqscan = on');
 
-  assert.match(plan, /transactions_user_recent_idx/, `plan ต้องใช้ index หน้าแรก:\n${plan}`);
-  assert.doesNotMatch(plan, /Sort/, `index ต้องเรียงให้แล้ว ไม่ต้อง Sort เพิ่ม:\n${plan}`);
+  assert.match(latest, /transactions_user_recent_idx/, `plan ต้องใช้ index ล่าสุด:\n${latest}`);
+  assert.doesNotMatch(latest, /Sort/, `index ต้องเรียงให้แล้ว ไม่ต้อง Sort เพิ่ม:\n${latest}`);
+  assert.match(monthPage, /transactions_user_(recent|month)_idx/, `หน้าต้องกรองด้วย index:\n${monthPage}`);
+  assert.doesNotMatch(monthPage, /Seq Scan/, `ห้ามตกเป็น Seq Scan:\n${monthPage}`);
 });

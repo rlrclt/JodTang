@@ -44,14 +44,66 @@ const TH_MONTHS = [
 ] as const;
 
 /**
+ * ช่วงปีที่ระบบรองรับ — ต้องเป็นปี 4 หลักเสมอ
+ * '0000-01-01' หรือปีที่เลื่อนจนเกิน 9999 จะประกอบเป็นสตริงผิดรูป ('00-1-…' / '10000-01-01')
+ * แล้ว PG จะปฏิเสธ date param → หน้าจอพัง 500 (รีวิว wave7b ข้อ 1)
+ */
+const MIN_PERIOD_YEAR = 1000;
+const MAX_PERIOD_YEAR = 9999;
+
+/** อ่าน 'YYYY-MM-01' → ปี/เดือน (ค.ศ.) · ผิดรูป/ปีนอกช่วง = TypeError เพราะงวดเดือนของทั้งแอปมีรูปแบบเดียว */
+function parsePeriodMonth(periodMonth: PeriodMonth): { year: number; month: number } {
+  const match = /^(\d{4})-(\d{2})-01$/.exec(String(periodMonth));
+  const month = match ? Number(match[2]) : 0;
+  const year = match ? Number(match[1]) : 0;
+  if (!match || month < 1 || month > 12 || year < MIN_PERIOD_YEAR || year > MAX_PERIOD_YEAR) {
+    throw new TypeError(`periodMonth ต้องเป็น 'YYYY-MM-01' (ได้ ${JSON.stringify(periodMonth)})`);
+  }
+  return { year, month };
+}
+
+/**
+ * เลื่อนงวดเดือนไป N เดือน (บวก = อนาคต, ลบ = อดีต) — '2026-01-01' − 1 เดือน = '2025-12-01'
+ * คิดจากสตริงล้วน ไม่ใช้ Date เลย → ไม่ขึ้นกับ timezone ของเครื่องและไม่มีปัญหา DST/วันที่ 31
+ * เลื่อนจนสุดขอบช่วงปี = **หยุดที่ขอบ** (ไม่คืนสตริงผิดรูป) → ปุ่ม ‹ › ของ UI ไม่ทำให้หน้าพัง
+ */
+export function shiftPeriodMonth(periodMonth: PeriodMonth, months: number): PeriodMonth {
+  const { year, month } = parsePeriodMonth(periodMonth);
+  if (!Number.isSafeInteger(months)) {
+    throw new TypeError(`months ต้องเป็นจำนวนเต็ม (ได้ ${String(months)})`);
+  }
+  const total = year * 12 + (month - 1) + months;
+  const shiftedYear = Math.floor(total / 12);
+  if (shiftedYear < MIN_PERIOD_YEAR) return `${MIN_PERIOD_YEAR}-01-01`;
+  if (shiftedYear > MAX_PERIOD_YEAR) return `${MAX_PERIOD_YEAR}-12-01`;
+
+  const shiftedMonth = (total % 12) + 1; // total ติดลบก็ยังถูก เพราะ % คงเครื่องหมายของตัวตั้ง
+  return `${String(shiftedYear).padStart(4, '0')}-${String(shiftedMonth).padStart(2, '0')}-01`;
+}
+
+/**
+ * อ่านงวดเดือนจาก **ค่าดิบที่ผู้ใช้คุม** (query param `?m=` ของหน้าเว็บ) — **ไม่ throw เด็ดขาด**
+ * ค่าที่ผิดรูป ('' · 'abc' · '2026-13-01' · '2026-09-15' · null · array) → คืน **เดือนปัจจุบัน** เพื่อให้หน้าเว็บตอบ 200
+ * เหตุผล: ถ้าปล่อยให้ค่าจาก URL ไปถึง parsePeriodMonth() ตรง ๆ ผู้ใช้พิมพ์ ?m=abc ก็ได้ 500 (spec §1 ห้าม)
+ */
+export function periodMonthFromParam(value: unknown): PeriodMonth {
+  if (typeof value !== 'string') return periodMonthOfBkk();
+
+  const match = /^(\d{4})-(\d{2})-01$/.exec(value);
+  const month = match ? Number(match[2]) : 0;
+  const year = match ? Number(match[1]) : 0;
+  if (!match || month < 1 || month > 12 || year < MIN_PERIOD_YEAR || year > MAX_PERIOD_YEAR) {
+    return periodMonthOfBkk();
+  }
+
+  return value;
+}
+
+/**
  * ป้ายเดือนไทยสำหรับแสดงผล: '2026-09-01' → 'กันยายน 2569' (ปีพุทธศักราช — ตรงกับ MONTH_LABEL ที่ UI ใช้)
  * รับเฉพาะวันแรกของเดือน เพราะงวดเดือนของทั้งแอปคือ 'YYYY-MM-01' (วันที่อื่น = ผู้เรียกเข้าใจผิด → ล้มเสียงดัง)
  */
 export function formatMonthLabelTh(periodMonth: PeriodMonth): string {
-  const match = /^(\d{4})-(\d{2})-01$/.exec(String(periodMonth));
-  const month = match ? Number(match[2]) : 0;
-  if (!match || month < 1 || month > 12) {
-    throw new TypeError(`periodMonth ต้องเป็น 'YYYY-MM-01' (ได้ ${JSON.stringify(periodMonth)})`);
-  }
-  return `${TH_MONTHS[month - 1]} ${Number(match[1]) + 543}`;
+  const { year, month } = parsePeriodMonth(periodMonth);
+  return `${TH_MONTHS[month - 1]} ${year + 543}`;
 }

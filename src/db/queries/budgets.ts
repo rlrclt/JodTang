@@ -3,13 +3,14 @@
  *
  * กติกาของไฟล์นี้:
  *   1. `used` ต้องเท่ากับผลของ monthExpenseByCategory() (src/db/queries/transactions.ts) เป๊ะ — ตัวเลขต้องตรงกันทั้งแอป
- *      ไม่คิดสูตรเงินใหม่ในไฟล์นี้: ผลรวมมาจาก SQL แล้วส่งเข้า toSatang-style guard ตัวเดียว (§ satangOf)
+ *      ไม่คิดสูตรเงินใหม่ในไฟล์นี้: ผลรวมมาจาก SQL แล้วส่งเข้า satangFromDb() ของ src/lib/money.ts (ด่านเดียวของจำนวนเงิน)
  *   2. งบของหมวดที่ถูก archive ยังต้องอ่านออกมา (พร้อม archivedAt) — ถ้าซ่อน หน้า /summary จะขาดยอดเงียบ ๆ
  *   3. หน้าเดียว = query เดียว (ห้าม N+1: งบ N หมวดต้องไม่ยิง N+1 ครั้ง) — เทสต์นับ query จริงไว้ที่ budgets.test.ts
  *   4. relative import + .ts ต่อท้าย เพราะเทสต์รันด้วย `node --test` ตรง ๆ ซึ่งไม่รู้จัก alias @/
  */
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 
+import { satangFromDb } from '../../lib/money.ts';
 import type { PeriodMonth } from '../../lib/month.ts';
 import type { Db } from '../index.ts';
 import { budgets, categories, transactions } from '../schema.ts';
@@ -50,21 +51,6 @@ export type BudgetProgress = {
   /** ผลรวม expense ของเดือนนั้นของหมวดนั้น (สตางค์) — เท่ากับ monthExpenseByCategory() */
   used: number;
 };
-
-const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
-
-/**
- * sum(bigint) ของ Postgres กลับมาเป็น numeric (ไดรเวอร์ส่งเป็นสตริง) → แปลงเป็นสตางค์แบบไม่เสียความแม่นยำ
- * ห้ามใช้ Number(สตริง) ตรง ๆ: ค่าที่เกิน 2^53 จะถูกปัดเงียบ ๆ แล้วหน้า /summary จะโชว์ยอดผิดโดยไม่มี error
- */
-function satangOf(value: unknown): number {
-  if (typeof value === 'number' && Number.isSafeInteger(value)) return value;
-  const big = typeof value === 'bigint' ? value : BigInt(String(value ?? 0).trim());
-  if (big > MAX_SAFE || big < -MAX_SAFE) {
-    throw new RangeError(`ยอดรวมหลุดช่วง safe integer (${big}) — ยอดเพี้ยนแล้ว ห้ามแสดง`);
-  }
-  return Number(big);
-}
 
 /**
  * งบของเดือนหนึ่ง + ยอดที่ใช้ไปแล้วของแต่ละหมวด — 1 query ต่อหน้า
@@ -115,7 +101,7 @@ export async function listBudgetProgress(
     // boolean ขึ้นก่อนได้: false < true → แถวที่ archived_at is null มาก่อน
     .orderBy(sql`${categories.archivedAt} is not null`, asc(categories.sortOrder), asc(categories.name));
 
-  return rows.map((row) => ({ ...row, used: satangOf(row.used) }));
+  return rows.map((row) => ({ ...row, used: satangFromDb(row.used, 'ยอดที่ใช้ไปของหมวด') }));
 }
 
 /** งบของ (ผู้ใช้, หมวด, เดือน) — ใช้ตอนเปิด sheet ว่าตั้งไว้เท่าไร · ไม่มี = null */

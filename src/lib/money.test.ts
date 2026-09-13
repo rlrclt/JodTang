@@ -12,6 +12,7 @@ import {
   formatSatang,
   isCounted,
   periodTotals,
+  satangFromDb,
   toSatang,
 } from "./money.ts";
 import type { MoneyRow } from "./money.ts";
@@ -197,7 +198,26 @@ test("X5: ยอดหมวดเดียวเกิน 2^53 ต้องไ�
   assert.equal(expenseByCategory(rows.slice(0, 9)).get("rent"), 9 * cap);
 });
 
-/* ---- เคสที่ verifier เจอ: เงินเป็น string แล้วต่อกันเงียบ ๆ (ยอดผิดแต่ไม่มี error) ---- */
+/* ---- ยอดที่ aggregate มาจาก DB: sum(bigint) ของ PG กลับมาเป็น numeric/bigint ไม่ใช่ number ---- */
+
+test("satangFromDb: รับสตริง/bigint จาก aggregate ได้ และไม่ปัดค่าที่เกิน safe integer", () => {
+  // ไดรเวอร์ PG ส่ง numeric มาเป็นสตริง — ต้องอ่านเป็นสตางค์ได้ตรงเป๊ะ
+  assert.equal(satangFromDb("128400"), 128_400);
+  assert.equal(satangFromDb(128_400), 128_400);
+  assert.equal(satangFromDb(BigInt(128_400)), 128_400);
+  assert.equal(satangFromDb("0"), 0);
+  // ไม่มีแถว = sum() คืน null → 0 (ไม่ใช่ NaN)
+  assert.equal(satangFromDb(null), 0);
+  assert.equal(satangFromDb(undefined), 0);
+
+  // 2^53 + 1: Number("9007199254740993") จะได้ ...992 (ปัดเงียบ ๆ = ยอดผิด) → ต้องล้มเสียงดัง
+  assert.throws(() => satangFromDb("9007199254740993"), RangeError);
+  assert.throws(() => satangFromDb("-9007199254740993"), RangeError);
+  assert.throws(() => satangFromDb(1.5), RangeError);
+  assert.throws(() => satangFromDb("abc"), RangeError);
+});
+
+
 
 test("amount เป็น string ต้อง throw ไม่ใช่ต่อสตริงเงียบ ๆ", () => {
   const strRows = [

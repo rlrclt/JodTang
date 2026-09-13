@@ -7,7 +7,7 @@
  * สคริปต์นี้ทำ 4 อย่าง แล้วลบข้อมูลที่สร้างทิ้ง:
  *   1. เปิด DB ผ่าน getDb() ของแอป (src/db/index.ts) — เส้นทางเดียวกับที่แอปใช้จริง
  *   2. สร้างผู้ใช้ → กระเป๋า → หมวด ผ่าน src/db/mutations (ไม่ยิง SQL เอง ยกเว้นแถว "user" ที่ Better Auth เป็นเจ้าของ)
- *   3. addTransaction 2 รายการ (รับ 30,000.00 · จ่าย 1,284.00) แล้วอ่านกลับด้วย monthTotals/recentTransactions
+ *   3. addTransaction 2 รายการ (รับ 30,000.00 · จ่าย 1,284.00) แล้วอ่านกลับด้วย monthTotals/listTransactionPage
  *   4. assert ยอดที่อ่านได้ตรงกับที่คาด แล้วลบข้อมูลทั้งหมดทิ้ง
  *
  * ตั้งใจไม่ใช้ DATABASE_URL: สคริปต์ลบตัวแปรทิ้งก่อนเรียก getDb() เพื่อบังคับเส้นทาง dev fallback
@@ -24,7 +24,7 @@ const { closeDevDb, DEV_DB_DIR } = await import('../src/db/dev-pglite.ts');
 const { addAccount } = await import('../src/db/mutations/accounts.ts');
 const { addCategory } = await import('../src/db/mutations/categories.ts');
 const { addTransaction } = await import('../src/db/mutations/transactions.ts');
-const { monthTotals, recentTransactions } = await import('../src/db/queries/transactions.ts');
+const { monthTotals, listTransactionPage } = await import('../src/db/queries/transactions.ts');
 const { accounts, categories, transactions, user } = await import('../src/db/schema.ts');
 const { eq } = await import('drizzle-orm');
 
@@ -85,16 +85,20 @@ try {
 
   // 4) อ่านกลับด้วย query layer จริง
   const totals = await monthTotals(db, USER_ID, PERIOD);
-  const recent = await recentTransactions(db, USER_ID, 10);
+  // หน้าแรกใช้ listTransactionPage() (API เดียวกับ UI) — เดิมสคริปต์นี้ใช้ฟังก์ชัน query ที่ถูกลบไปแล้วใน wave7b
+  const page = await listTransactionPage(db, USER_ID, { limit: 10 });
+  const recent = page.rows;
 
   console.log(`monthTotals(${PERIOD}): รับ ${baht(totals.income)} · จ่าย ${baht(totals.expense)} · คงเหลือ ${baht(totals.balance)} บาท`);
-  console.log(`recentTransactions: ${recent.length} รายการ`);
+  console.log(`listTransactionPage: ${recent.length} รายการ (total ${page.total} · nextCursor ${page.nextCursor ? 'มี' : 'ไม่มี'})`);
   for (const row of recent) {
     console.log(`  - ${row.kind.padEnd(7)} ${baht(row.amount).padStart(10)} บาท · ${row.occurredAt.toISOString()}`);
   }
 
   assert.deepEqual(totals, EXPECTED, 'ยอดเดือนต้องตรงกับที่บันทึก');
   assert.equal(recent.length, 2, 'ต้องเห็น 2 รายการ');
+  assert.equal(page.total, 2, 'total ของทั้งชุดต้องเป็น 2 (ไม่ใช่แค่จำนวนในหน้านี้)');
+  assert.equal(page.nextCursor, null, 'มี 2 แถวและ limit 10 = ไม่มีหน้าถัดไป');
   assert.deepEqual(
     recent.map((row) => row.id),
     [expenseRow.id, incomeRow.id],
