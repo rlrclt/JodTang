@@ -66,6 +66,13 @@ const afterCursor = (cursor: KeysetCursor): SQL<unknown> =>
     and(eq(transactions.occurredAt, cursor.occurredAt), lt(transactions.id, cursor.id)),
   ) as SQL<unknown>;
 
+/**
+ * escape อักขระพิเศษของ LIKE (% _ \) ก่อนเอาไปครอบ %...%
+ * ถ้าไม่ escape: พิมพ์ '_' จะได้ทุกตัวอักษร · พิมพ์ '%' จะได้ทุกแถว · พิมพ์ '\' จะพัง (pattern ลงท้ายด้วย escape char)
+ * PG ใช้ \ เป็น escape char เป็น default อยู่แล้ว จึงไม่ต้องเติม escape clause (docs/query-review.md ข้อ 4)
+ */
+const escapeLike = (value: string): string => value.replace(/[\\%_]/g, (char) => `\\${char}`);
+
 export type KeysetCursor = { occurredAt: Date; id: string };
 
 /** รายการของเดือน (เฉพาะรับ/จ่าย — transfer ไม่เป็นทั้งรับและจ่าย ตาม money.ts) */
@@ -133,7 +140,7 @@ export async function listTransactions(db: Db, userId: string, filters: ListFilt
   if (filters.kind) conditions.push(eq(transactions.kind, filters.kind));
   if (filters.categoryId) conditions.push(eq(transactions.categoryId, filters.categoryId));
   if (filters.accountId) conditions.push(eq(transactions.accountId, filters.accountId));
-  if (filters.search) conditions.push(ilike(transactions.note, `%${filters.search}%`));
+  if (filters.search) conditions.push(ilike(transactions.note, `%${escapeLike(filters.search)}%`));
   if (filters.cursor) conditions.push(afterCursor(filters.cursor));
 
   const rows = await db

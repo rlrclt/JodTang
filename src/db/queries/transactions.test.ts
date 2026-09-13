@@ -84,6 +84,23 @@ await pglite.exec(`
   insert into transactions (user_id, kind, account_id, category_id, amount, occurred_at, note) values
     ('${U2}', 'expense', '${A_U2}', '${C_U2E}', 500000, timestamptz '2026-09-12 10:00+07', 'ของ u2'),
     ('${U2}', 'income',  '${A_U2}', '${C_U2I}', 900000, timestamptz '2026-09-12 09:00+07', 'รับของ u2');
+
+  -- กลุ่มเวลาเท่ากันเป๊ะ (keyset tie-break: 4+3+1 แถว) — 2 แถวเท่ากันไม่พอจะแยก tie branch ออกจากบั๊ก
+  insert into transactions (user_id, kind, account_id, category_id, amount, occurred_at, note) values
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 1001, timestamptz '2026-10-05 09:00+07', 'tie-A'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 1002, timestamptz '2026-10-05 09:00+07', 'tie-A'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 1003, timestamptz '2026-10-05 09:00+07', 'tie-A'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 1004, timestamptz '2026-10-05 09:00+07', 'tie-A'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 2001, timestamptz '2026-10-04 09:00+07', 'tie-B'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 2002, timestamptz '2026-10-04 09:00+07', 'tie-B'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 2003, timestamptz '2026-10-04 09:00+07', 'tie-B'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 3001, timestamptz '2026-10-03 09:00+07', 'tie-C');
+
+  -- note ที่มีอักขระพิเศษของ LIKE (ทดสอบ escape): 'กาแฟ ลด 50%' · 'a_b' · 'axb'
+  insert into transactions (user_id, kind, account_id, category_id, amount, occurred_at, note) values
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 5000, timestamptz '2026-10-06 09:00+07', 'กาแฟ ลด 50%'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 6000, timestamptz '2026-10-06 09:00+07', 'a_b'),
+    ('${U1}', 'expense', '${A1}', '${C_FOOD}', 7000, timestamptz '2026-10-06 09:00+07', 'axb');
 `);
 await pglite.exec('vacuum analyze transactions');
 
@@ -227,6 +244,84 @@ test('รายการทั้งหมด: filter kind/หมวด/เด�
 
   // ค้นหาต้องไม่ข้ามผู้ใช้: คำค้นเดียวกันในมุมของ u2 ต้องไม่ได้ของ u1
   assert.equal((await listTransactions(db, U2, { search: 'ข้าว' })).length, 0);
+});
+
+test('keyset: แถวที่ occurred_at เท่ากันเป๊ะ ต้องไม่ข้าม/ไม่ซ้ำ (เทียบ id เมื่อเวลาเท่ากัน)', async () => {
+  // fixture ต้องมีกลุ่มเวลาเท่ากัน ≥3 แถว อย่างน้อย 2 กลุ่ม ไม่งั้นเทสต์นี้พิสูจน์อะไรไม่ได้
+  const groups = await pglite.query<{ n: number }>(`
+    select count(*)::int as n from (
+      select occurred_at from transactions where user_id = '${U1}' and deleted_at is null
+      group by occurred_at having count(*) >= 3
+    ) g`);
+  assert.ok(groups.rows[0].n >= 2, `fixture ต้องมีกลุ่มเวลาเท่ากัน ≥3 อย่างน้อย 2 กลุ่ม (ได้ ${groups.rows[0].n})`);
+
+  const raw = await pglite.query<{ n: number }>(
+    `select count(*)::int as n from transactions where user_id = '${U1}' and deleted_at is null`,
+  );
+  const expected = raw.rows[0].n;
+
+  // ไล่ทีละ 2 แถวจนหมด (limit เล็ก = ตัดกลางกลุ่มเวลาซ้ำแน่ ๆ)
+  const all: Awaited<ReturnType<typeof recentTransactions>> = [];
+  let cursor: { occurredAt: Date; id: string } | undefined;
+  for (let guard = 0; guard < 100; guard++) {
+    const page = await recentTransactions(db, U1, 2, cursor);
+    if (page.length === 0) break;
+    all.push(...page);
+    const tail = page[page.length - 1];
+    cursor = { occurredAt: tail.occurredAt, id: tail.id };
+  }
+
+  assert.equal(all.length, expected, 'จำนวนรวมทุกหน้า = จำนวนแถวใน DB (เวลาซ้ำต้องไม่หาย)');
+  assert.equal(new Set(all.map((row) => row.id)).size, expected, 'ต้องไม่มี id ซ้ำข้ามหน้า');
+
+  // strict desc ตาม (occurredAt, id): เวลาเท่ากันต้องเทียบ id (uuid เทียบแบบ byte ตรงกับ PG)
+  for (let i = 1; i < all.length; i++) {
+    const prev = all[i - 1];
+    const next = all[i];
+    const ok =
+      prev.occurredAt.getTime() > next.occurredAt.getTime() ||
+      (prev.occurredAt.getTime() === next.occurredAt.getTime() && prev.id > next.id);
+    assert.ok(ok, `ลำดับผิดที่คู่ ${i}: ${prev.id} (${prev.occurredAt.toISOString()}) กับ ${next.id}`);
+  }
+
+  // และต้องตรงกับ query เดียวที่ไม่แบ่งหน้าเป๊ะ ๆ (ตัวตัดสินสุดท้ายเรื่อง tie-break)
+  const full = await recentTransactions(db, U1, 1000);
+  assert.deepEqual(
+    all.map((row) => row.id),
+    full.map((row) => row.id),
+  );
+  const tiedInFull = await pglite.query<{ n: number }>(`
+    select count(*)::int as n from transactions t
+    where t.user_id = '${U1}' and t.deleted_at is null
+      and t.occurred_at in (
+        select occurred_at from transactions where user_id = '${U1}' and deleted_at is null
+        group by occurred_at having count(*) > 1
+      )`);
+  assert.ok(tiedInFull.rows[0].n >= 10, `ต้องมีแถวที่อยู่ในกลุ่มเวลาซ้ำ ≥10 (ได้ ${tiedInFull.rows[0].n})`);
+});
+
+test('ค้นหา: escape อักขระพิเศษของ LIKE (% _ \\) — พิมพ์ _ ต้องไม่ match ตัวอื่น', async () => {
+  // 'a_b' ที่ไม่ escape จะ match ทั้ง 'a_b' และ 'axb' (วัดจากรีวิว) — ยอดเงินใช้แยกแถวเพราะ COLUMNS ไม่ได้ select note
+  assert.deepEqual(
+    (await listTransactions(db, U1, { search: 'a_b' })).map((row) => row.amount),
+    [6000],
+  );
+  assert.deepEqual(
+    (await listTransactions(db, U1, { search: 'axb' })).map((row) => row.amount),
+    [7000],
+  );
+  // '%' ที่ไม่ escape จะได้ทุกแถวที่มี note
+  assert.deepEqual(
+    (await listTransactions(db, U1, { search: '%' })).map((row) => row.amount),
+    [5000],
+  );
+  // '_' ที่ไม่ escape จะได้ทุกแถว (LIKE ใช้ _ เป็น wildcard หนึ่งตัวอักษร)
+  assert.deepEqual(
+    (await listTransactions(db, U1, { search: '_' })).map((row) => row.amount),
+    [6000],
+  );
+  // '\' ที่ไม่ escape จะทำให้ pattern ลงท้ายด้วย escape char = PG error → ต้องไม่พังและได้ 0 แถว
+  assert.deepEqual(await listTransactions(db, U1, { search: '\\' }), []);
 });
 
 test('ง) query หน้าแรกใช้ index transactions_user_recent_idx และไม่ต้อง Sort', async () => {
