@@ -3,8 +3,13 @@ import Link from 'next/link';
 import { SignOutButton } from '@/components/AuthButtons';
 import { LoadFailed } from '@/components/LoadFailed';
 import { InstallApp } from '@/components/Pwa';
+import { getDb } from '@/db';
+import { getUserProfile, type UserProfile } from '@/db/queries/profile';
+import { isNextControlFlow } from '@/lib/next-signals';
 import { formatMonthLabelTh, periodMonthOfBkk } from '@/lib/month';
 import { withMonth } from '@/lib/month-url';
+
+import { EmailControl } from './EmailControl';
 import { gateSession } from '@/lib/session';
 
 // design.md §3 แท็บ 4 (ตั้งค่า) — บัญชี/ออกจากระบบ + งบประมาณ ทำงานจริงแล้ว ส่วนที่เหลือยังเป็นโครง
@@ -12,7 +17,19 @@ import { gateSession } from '@/lib/session';
 export default async function SettingsPage() {
   const gate = await gateSession();
   if (gate.unavailable) return <LoadFailed />;
-  const { name, email } = gate.user;
+  const { name, userId } = gate.user;
+
+  /**
+   * อีเมล/สถานะยืนยันอ่านจาก DB (ไม่ใช่จาก session) — session ไม่มี emailVerified
+   * และอีเมลตัวแทนของ LINE ต้องไม่ถูกแสดงเป็นอีเมลจริง
+   */
+  let profile: UserProfile | null = null;
+  try {
+    profile = await getUserProfile(getDb(), userId);
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    console.error('[jodjai] อ่านโปรไฟล์อีเมลไม่สำเร็จ:', error);
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -25,12 +42,21 @@ export default async function SettingsPage() {
         </h2>
         <div className="rounded-card border border-border bg-surface px-4">
           <div className="flex min-h-14 flex-wrap items-center justify-between gap-3">
-            <span className="min-w-0">
+            <div className="min-w-0 flex-1">
               <span className="block truncate font-semibold">{name}</span>
-              <span className="block truncate text-[13px] leading-[18px] text-text-muted">
-                {email ?? 'บัญชีนี้ไม่มีอีเมล (LINE ยังไม่อนุมัติสิทธิ์อีเมล)'}
-              </span>
-            </span>
+              {profile ? (
+                // ส่งลง client เฉพาะอีเมลจริง — อีเมลตัวแทนต้องไม่หลุดไปกับ RSC payload/HTML (wave25 acceptance 1)
+                <EmailControl
+                  email={profile.usesPlaceholderEmail ? null : profile.email}
+                  emailVerified={profile.emailVerified}
+                  usesPlaceholderEmail={profile.usesPlaceholderEmail}
+                />
+              ) : (
+                <span className="block truncate text-[13px] leading-[18px] text-text-muted">
+                  อ่านข้อมูลอีเมลไม่ได้ตอนนี้
+                </span>
+              )}
+            </div>
             <SignOutButton />
           </div>
         </div>

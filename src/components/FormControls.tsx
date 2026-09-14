@@ -22,9 +22,24 @@ type TextFieldProps = {
   autoFocus?: boolean;
   /** id ของข้อความ error ของชีต (a11y): มีค่า = ช่องนี้ถูกทำเครื่องหมายว่าผิด + ผูกกับข้อความนั้นด้วย aria-describedby */
   errorId?: string;
+  /** ชนิดคีย์บอร์ดของมือถือ (เช่น 'email') — ไม่ใส่ = ใช้ค่าเริ่มต้นของเบราว์เซอร์ */
+  inputMode?: 'text' | 'email' | 'numeric' | 'decimal';
+  /** ให้ตัวจัดการรหัสผ่าน/ฟอร์มของเบราว์เซอร์รู้ว่าช่องนี้คืออะไร */
+  autoComplete?: string;
 };
 
-export function TextField({ id, label, value, onChange, disabled, placeholder, autoFocus, errorId }: TextFieldProps) {
+export function TextField({
+  id,
+  label,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  autoFocus,
+  errorId,
+  inputMode,
+  autoComplete = 'off',
+}: TextFieldProps) {
   return (
     <>
       <label htmlFor={id} className="mt-3 block text-[13px] leading-[18px] text-text-muted">
@@ -36,7 +51,8 @@ export function TextField({ id, label, value, onChange, disabled, placeholder, a
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled}
         placeholder={placeholder}
-        autoComplete="off"
+        inputMode={inputMode}
+        autoComplete={autoComplete}
         enterKeyHint="done"
         autoFocus={autoFocus}
         aria-invalid={errorId ? true : undefined}

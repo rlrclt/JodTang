@@ -35,20 +35,32 @@ function pgCode(error: unknown): string | undefined {
 
 /**
  * แปล error ดิบของ DB → ValidationError ที่จุดเดียว (error เดิมคงไว้ที่ cause + log ไว้ debug)
+ * `messages` = ข้อความเฉพาะของตารางนั้น ทับข้อความกลางของรหัสเดียวกันได้ (เช่น unique ของอีเมล
+ * ต้องบอกว่า "อีเมลนี้ถูกใช้กับบัญชีอื่นแล้ว" ไม่ใช่ "มีชื่อนี้อยู่แล้ว")
  * รหัสที่ไม่รู้จัก = คืน error เดิม (บั๊กจริง/DB ล่ม ต้องเห็น stack ไม่ใช่กลายเป็นข้อความผู้ใช้)
  */
-export function toUserError(error: unknown): unknown {
-  const message = DB_ERROR_MESSAGES[pgCode(error) ?? ''];
+export function toUserError(
+  error: unknown,
+  messages: Partial<Record<string, string>> = {},
+): unknown {
+  const code = pgCode(error) ?? '';
+  const message = messages[code] ?? DB_ERROR_MESSAGES[code];
   if (!message) return error;
   console.error('[jodjai] write rejected by DB:', error);
   return new ValidationError(message, { cause: error });
 }
 
-/** รันคำสั่ง DB แล้วแปล error ที่ผู้ใช้ทำได้ (uuid/FK/unique/check) ให้เป็นข้อความไทย */
-export async function guardWrite<T>(run: () => Promise<T>): Promise<T> {
+/**
+ * รันคำสั่ง DB แล้วแปล error ที่ผู้ใช้ทำได้ (uuid/FK/unique/check) ให้เป็นข้อความไทย
+ * `messages` (ไม่บังคับ) = ข้อความเฉพาะของตารางนั้น — ดู toUserError()
+ */
+export async function guardWrite<T>(
+  run: () => Promise<T>,
+  messages: Partial<Record<string, string>> = {},
+): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    throw toUserError(error);
+    throw toUserError(error, messages);
   }
 }

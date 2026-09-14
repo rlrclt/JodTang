@@ -26,8 +26,22 @@ export type LineMappedUser = {
   emailVerified: false;
 };
 
-/** โดเมนของอีเมลตัวแทน — `.local` เป็นโดเมนสงวนสำหรับ mDNS ไม่ใช่โดเมนอีเมลจริง */
-const PLACEHOLDER_DOMAIN = 'line.local';
+/**
+ * โดเมนของอีเมลตัวแทน — `.local` เป็นโดเมนสงวนสำหรับ mDNS ไม่ใช่โดเมนอีเมลจริง
+ * export ให้ชั้นข้อมูล (src/db/**) ใช้ค่าเดียวกันตรวจ "อีเมลนี้เป็นตัวแทนที่ระบบสร้างให้ไหม"
+ * ⇒ ห้ามคัดลอกสตริงนี้ไปที่อื่น (ไฟล์นี้เป็นที่เดียวที่รู้จักโดเมนนี้)
+ */
+export const PLACEHOLDER_EMAIL_DOMAIN = 'line.local';
+
+/**
+ * อีเมลนี้เป็นอีเมลตัวแทนที่ระบบสร้างให้หรือไม่ — ใช้ทั้งตอน **อ่าน** (UI ต้องไม่โชว์เป็นอีเมลจริง)
+ * และตอน **เขียน** (ห้ามผู้ใช้ตั้งอีเมลในโดเมนนี้เอง)
+ * นับซับโดเมนด้วย (`x@sub.line.local`) เพราะ `.local` ทั้งหมดไม่ใช่ที่อยู่จริง
+ */
+export function isPlaceholderEmail(email: string): boolean {
+  const domain = email.trim().toLowerCase().split('@').pop() ?? '';
+  return domain === PLACEHOLDER_EMAIL_DOMAIN || domain.endsWith(`.${PLACEHOLDER_EMAIL_DOMAIN}`);
+}
 
 /** อ่านฟิลด์สตริงจากโปรไฟล์ภายนอก (ตรวจ typeof ทุกครั้ง — ห้ามเชื่อรูปทรงที่ส่งมา) */
 function stringField(source: Record<string, unknown>, key: string): string {
@@ -50,5 +64,5 @@ export function mapLineProfileToUser(profile: unknown): LineMappedUser {
   if (sub === '') {
     throw new Error('โปรไฟล์ LINE ไม่มี sub — สร้างอีเมลตัวแทนที่เสถียรต่อผู้ใช้ไม่ได้');
   }
-  return { name, email: `${sub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`, emailVerified: false };
+  return { name, email: `${sub.toLowerCase()}@${PLACEHOLDER_EMAIL_DOMAIN}`, emailVerified: false };
 }
