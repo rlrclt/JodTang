@@ -8,7 +8,7 @@
  *   3. เงินเป็นสตางค์ bigint mode:'number' (schema.sql ข้อ 1)
  *   4. relative import + .ts ต่อท้าย เพราะเทสต์รันด้วย `node --test` ตรง ๆ ซึ่งไม่รู้จัก alias @/
  */
-import { type SQL, and, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { type SQL, and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 
 import {
   MONEY_KINDS,
@@ -239,6 +239,90 @@ export async function listTransactionPage(
   return {
     rows: toRows(pageRows),
     nextCursor: hasMore && tail ? { occurredAt: tail.occurredAt, id: tail.id } : null,
+    total: rowCount(rows[0].total),
+  };
+}
+
+/** แถวที่ถูกลบแล้ว (soft delete) — `deletedAt` ไม่ null แน่นอนเพราะลิสต์นี้กรอง `deleted_at is not null` */
+export type DeletedTxn = TxnRow & { deletedAt: Date };
+
+/**
+ * cursor ของลิสต์ "รายการที่ลบแล้ว" — **ต้องอ้างคอลัมน์ที่ใช้เรียงจริง (`deleted_at`)** ไม่ใช่ occurredAt
+ * (cursor คนละคอลัมน์กับ ORDER BY = keyset เพี้ยน: แถวหาย/ซ้ำข้ามหน้า) จึงเป็นชนิดแยกจาก KeysetCursor
+ */
+export type DeletedCursor = { deletedAt: Date; id: string };
+
+export type DeletedPage = {
+  rows: DeletedTxn[];
+  /** cursor ของหน้าถัดไป · null = หมดแล้ว */
+  nextCursor: DeletedCursor | null;
+  /** จำนวนแถวที่ถูกลบทั้งหมดของผู้ใช้ (เท่ากันทุกหน้า) */
+  total: number;
+};
+
+export type DeletedFilters = { cursor?: DeletedCursor; limit?: number };
+
+/** เงื่อนไขกลางของลิสต์ที่ลบแล้ว: ของผู้ใช้คนนี้ + ถูกลบแล้ว (ไม่รวม cursor) */
+const deletedConditions = (userId: string): SQL<unknown>[] => [
+  eq(transactions.userId, userId),
+  isNotNull(transactions.deletedAt),
+];
+
+/** keyset ของลิสต์ที่ลบแล้ว: `(deleted_at, id) < (cursor.deletedAt, cursor.id)` */
+const afterDeletedCursor = (cursor: DeletedCursor): SQL<unknown> =>
+  or(
+    lt(transactions.deletedAt, cursor.deletedAt),
+    and(eq(transactions.deletedAt, cursor.deletedAt), lt(transactions.id, cursor.id)),
+  ) as SQL<unknown>;
+
+/**
+ * query ของหน้า "รายการที่ลบแล้ว" — แยก builder ให้เทสต์ EXPLAIN ตรวจได้ (ตัวเดียวกับที่ listDeletedTransactions รัน)
+ * เรียง `deleted_at desc, id desc` = "ล่าสุดที่ลบก่อน" (คนละความหมายกับ occurred_at ของลิสต์ปกติ)
+ */
+export function deletedTransactionsQuery(db: Db, userId: string, filters: DeletedFilters = {}) {
+  const filtered = deletedConditions(userId);
+  const conditions = filters.cursor ? [...filtered, afterDeletedCursor(filters.cursor)] : filtered;
+
+  return db
+    .select({
+      ...TXN_COLUMNS,
+      total: sql<unknown>`(select count(*) from ${transactions} where ${and(...filtered)})`,
+    })
+    .from(transactions)
+    .where(and(...conditions))
+    .orderBy(desc(transactions.deletedAt), desc(transactions.id))
+    .limit(pageLimit(filters.limit) + 1);
+}
+
+/**
+ * รายการที่ถูกลบแล้ว (ถังขยะ/กู้คืน) — **1 query** ต่อหน้า เหมือน listTransactionPage ทุกประการ
+ * ต่างแค่กรอง `deleted_at is not null` และเรียงด้วย `deleted_at` (ไม่มีตัวกรองเดือน/ค้นหา — หน้านี้เป็นลิสต์สั้น)
+ * ข้อยกเว้นเดียวกับลิสต์ปกติ: หน้าว่างที่มี cursor → ยิง count เพิ่ม 1 ครั้ง ไม่งั้น `total` จะกลายเป็น 0
+ */
+export async function listDeletedTransactions(
+  db: Db,
+  userId: string,
+  filters: DeletedFilters = {},
+): Promise<DeletedPage> {
+  const rows = await deletedTransactionsQuery(db, userId, filters);
+  if (rows.length === 0) {
+    if (!filters.cursor) return { rows: [], nextCursor: null, total: 0 };
+    const counted = await db
+      .select({ total: sql<unknown>`count(*)` })
+      .from(transactions)
+      .where(and(...deletedConditions(userId)));
+    return { rows: [], nextCursor: null, total: rowCount(counted[0]?.total ?? 0) };
+  }
+
+  const limit = pageLimit(filters.limit);
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const tail = pageRows[pageRows.length - 1];
+
+  return {
+    // deletedAt ไม่ null แน่ ๆ (SQL กรองไว้) — cast ที่จุดเดียวนี้พร้อมคอมเมนต์ ไม่ให้ชนิดโกหกที่อื่น
+    rows: toRows(pageRows).map((row) => ({ ...row, deletedAt: row.deletedAt as Date })),
+    nextCursor: hasMore && tail.deletedAt ? { deletedAt: tail.deletedAt, id: tail.id } : null,
     total: rowCount(rows[0].total),
   };
 }

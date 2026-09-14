@@ -1,0 +1,1 @@
+CREATE INDEX "transactions_user_deleted_idx" ON "transactions" USING btree ("user_id","deleted_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE deleted_at is not null;

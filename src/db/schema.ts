@@ -241,6 +241,10 @@ export const transactions = pgTable(
     // สองตัวนี้ห้ามเป็น partial: PG ตรวจ FK ด้วย query ที่ไม่มี deleted_at → partial จะถูกข้าม
     index('transactions_account_idx').on(t.accountId, t.userId),
     index('transactions_to_account_idx').on(t.toAccountId, t.userId),
+    // หน้า "รายการที่ลบแล้ว" — partial ฝั่ง deleted_at is not null (index อื่นอยู่ฝั่ง is null จึงใช้ไม่ได้)
+    index('transactions_user_deleted_idx')
+      .on(t.userId, t.deletedAt.desc(), t.id.desc())
+      .where(sql`deleted_at is not null`),
   ],
 );
 

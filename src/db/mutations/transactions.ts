@@ -13,14 +13,16 @@
  * Server action (เฟส 2) จะเป็นคนเรียกฟังก์ชันเหล่านี้ โดยดึง userId จาก session จริง
  * — ยังไม่เขียนตอนนี้เพราะต้องมี credential ก่อน (ตัว layer นี้ทดสอบได้ครบด้วย PGlite)
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 
 import { formatSatang, toSatang } from '../../lib/money.ts';
+import { alias } from 'drizzle-orm/pg-core';
+
 import { guardWrite, ValidationError } from '../errors.ts';
 import type { Db } from '../index.ts';
-import type { Session } from '../session.ts';
 import { TXN_COLUMNS, toRows, type TxnRow } from '../queries/transactions.ts';
-import { transactions } from '../schema.ts';
+import { accounts, categories, transactions } from '../schema.ts';
+import type { Session } from '../session.ts';
 
 
 /** ส่งต่อให้ผู้เรียกเดิมใช้ได้เหมือนเดิม (ย้ายบ้านไป errors.ts แล้ว) */
@@ -246,4 +248,83 @@ export async function softDeleteTransaction(
     throw new ValidationError('ไม่พบรายการนี้ (อาจถูกลบไปแล้วหรือไม่ใช่ของคุณ)');
   }
   return rows[0];
+}
+
+/** แถวที่ถูกลบแล้วของผู้ใช้คนนี้เท่านั้น (กู้คืนได้เฉพาะของที่ลบอยู่) */
+const ownDeletedRow = (session: Session, id: string) =>
+  and(eq(transactions.id, id), eq(transactions.userId, session.userId), isNotNull(transactions.deletedAt));
+
+/** แถวนี้พร้อมสถานะ archive ของกระเป๋า/หมวดที่มันอ้างถึง (1 query — ใช้ตัดสินว่ากู้คืนได้ไหม) */
+type RestorableRow = {
+  id: string;
+  deletedAt: Date | null;
+  accountArchivedAt: Date | null;
+  toAccountArchivedAt: Date | null;
+  categoryArchivedAt: Date | null;
+};
+
+/**
+ * กู้คืนรายการที่ถูกลบ (ตั้ง `deleted_at = null`) — คู่กับการลบแบบ soft delete
+ *
+ * กติกาที่เลือก (เขียนให้ชัดเพราะผู้ใช้เห็นข้อความ):
+ *   1. กู้คืนได้เฉพาะแถวที่ **ถูกลบอยู่** และเป็นของผู้ใช้คนนี้ — แถวที่ยังไม่ถูกลบ = ValidationError
+ *      "รายการนี้ไม่ได้ถูกลบอยู่" (ไม่ใช่ no-op เงียบ ๆ ที่ทำให้ผู้ใช้เข้าใจว่ากดสำเร็จ)
+ *   2. **ห้ามกู้คืนถ้ากระเป๋าหรือหมวดของรายการนั้นถูก archive ไปแล้ว** → โยน ValidationError ที่บอกทางแก้
+ *      (กู้คืนกระเป๋า/หมวดก่อน) เพราะถ้าปล่อยให้กลับมา รายการนั้นจะอ้างของที่ตัวเลือกในฟอร์มไม่มีอยู่
+ *      = แก้ไม่ได้/บันทึกทับไม่ได้ และผู้ใช้จะไม่รู้สาเหตุ · ทางเลือกคือ *ไม่บล็อกแล้วเตือน* ซึ่ง UI ทำไม่ได้
+ *      ถ้าชั้นข้อมูลไม่ส่งสัญญาณ — จึงเลือกบล็อกพร้อมข้อความ actionable
+ *   3. ตรวจทุกอย่างใน 1 query (join accounts/categories มาดู archived_at) แล้วค่อย update
+ */
+export async function restoreTransaction(db: Db, session: Session, id: string): Promise<TxnRow> {
+  const rowId = requiredText(id, 'id ของรายการ');
+  const toAccounts = alias(accounts, 'to_accounts');
+
+  const rows = await guardWrite(() =>
+    db
+      .select({
+        ...TXN_COLUMNS,
+        accountArchivedAt: accounts.archivedAt,
+        toAccountArchivedAt: toAccounts.archivedAt,
+        categoryArchivedAt: categories.archivedAt,
+      })
+      .from(transactions)
+      .innerJoin(accounts, and(eq(accounts.id, transactions.accountId), eq(accounts.userId, transactions.userId)))
+      .leftJoin(
+        toAccounts,
+        and(eq(toAccounts.id, transactions.toAccountId), eq(toAccounts.userId, transactions.userId)),
+      )
+      .leftJoin(
+        categories,
+        and(eq(categories.id, transactions.categoryId), eq(categories.userId, transactions.userId)),
+      )
+      .where(and(eq(transactions.id, rowId), eq(transactions.userId, session.userId)))
+      .limit(1),
+  );
+
+  const before = rows[0] as (RestorableRow & (typeof rows)[number]) | undefined;
+  if (!before) throw new ValidationError('ไม่พบรายการนี้ (หรือไม่ใช่ของคุณ)');
+  if (before.deletedAt === null) throw new ValidationError('รายการนี้ไม่ได้ถูกลบอยู่');
+  if (before.accountArchivedAt !== null) {
+    throw new ValidationError('กู้คืนไม่ได้เพราะกระเป๋าของรายการนี้ถูกเลิกใช้แล้ว — กู้คืนกระเป๋าก่อน');
+  }
+  if (before.toAccountArchivedAt !== null) {
+    throw new ValidationError('กู้คืนไม่ได้เพราะกระเป๋าปลายทางถูกเลิกใช้แล้ว — กู้คืนกระเป๋าก่อน');
+  }
+  if (before.categoryArchivedAt !== null) {
+    throw new ValidationError('กู้คืนไม่ได้เพราะหมวดของรายการนี้ถูกเลิกใช้แล้ว — กู้คืนหมวดก่อน');
+  }
+
+  const updated = await guardWrite(() =>
+    db
+      .update(transactions)
+      .set({ deletedAt: null })
+      .where(ownDeletedRow(session, rowId))
+      .returning(TXN_COLUMNS),
+  );
+
+  // แพ้การแข่ง: มีคนลบ/แก้พร้อมกันจนแถวไม่ใช่ "ที่ลบอยู่" อีกแล้ว → ต้องได้ ValidationError ไม่ใช่ undefined
+  if (updated.length === 0) {
+    throw new ValidationError('ไม่พบรายการที่ลบนี้ (อาจถูกกู้คืนไปแล้วหรือไม่ใช่ของคุณ)');
+  }
+  return toRows(updated)[0];
 }

@@ -8,9 +8,10 @@
  * กติกา:
  *   1. ใช้เมื่อ "ไม่มี DATABASE_URL และ NODE_ENV !== 'production'" เท่านั้น — index.ts เป็นคนตัดสิน
  *      ห้ามให้ไฟล์นี้ตัดสินเอง ไม่งั้น production ที่มี DATABASE_URL อาจหลุดมาใช้ PGlite
- *   2. DDL มาจาก drizzle/0000_mighty_vulture.sql ไฟล์เดียว (ตาราง/index/trigger ครบตาม docs/drizzle-mapping.md)
- *      apply ครั้งแรกที่เปิด DB · เช็คก่อนว่ามีตารางอยู่แล้วไหม → รันซ้ำไม่พัง
- *      และ apply ทั้งไฟล์ใน transaction เดียว → พังกลางทางต้องไม่เหลือ schema ครึ่ง ๆ กลาง ๆ
+ *   2. schema มาจาก **migration ทุกไฟล์ตาม journal** (drizzle/meta/_journal.json → drizzle/*.sql เรียงตามลำดับ
+ *      ไม่ hardcode ชื่อไฟล์) · apply ครั้งแรกที่เปิด DB · เช็คก่อนว่ามีตารางอยู่แล้วไหม → รันซ้ำไม่พัง
+ *      และ apply ทั้งชุดใน transaction เดียว → พังกลางทางต้องไม่เหลือ schema ครึ่ง ๆ กลาง ๆ
+ *      (ไดเรกทอรี .pglite ที่สร้างไว้ก่อนมี migration ใหม่จะยังเป็น schema เก่า — ลบทิ้งเพื่อให้สร้างใหม่)
  *   3. getDb() ฝั่งแอปเป็น sync (src/lib/auth.ts เรียกตอนสร้าง instance) แต่ PGlite เปิดแบบ async
  *      → คืน drizzle instance ที่ห่อ client ไว้ แล้ว "รอความพร้อมตอนยิง query แรก" ไม่ใช่ตอนสร้าง
  *      ผู้เรียกจึงได้ Db กลับไปแบบ sync เหมือนเดิม โดยไม่ต้องแก้ src/app/** หรือ src/lib/**
@@ -35,10 +36,31 @@ import * as schema from './schema.ts';
 /** โฟลเดอร์ข้อมูลของ PGlite — ทับได้ด้วย PGLITE_DIR (เช่นชี้ไปที่อื่นที่ไม่ถูก watch) */
 export const DEV_DB_DIR = process.env.PGLITE_DIR ?? resolve(process.cwd(), '.pglite');
 
-/** migration ตัวเดียวของโปรเจกต์ (drizzle/meta/_journal.json) — DDL ครบทั้งตาราง/index/trigger */
-const DDL_FILE = resolve(process.cwd(), 'drizzle', '0000_mighty_vulture.sql');
+/** โฟลเดอร์ migration ของโปรเจกต์ (drizzle-kit) — รายชื่อไฟล์อ่านจาก journal ไม่ได้ hardcode */
+const MIGRATIONS_DIR = resolve(process.cwd(), 'drizzle');
+/** journal ของ drizzle-kit = แหล่งความจริงว่ามี migration ไฟล์อะไรบ้างและลำดับไหน */
+const JOURNAL_FILE = resolve(MIGRATIONS_DIR, 'meta', '_journal.json');
 
-/** ตารางที่ใช้เช็คว่า DDL ถูก apply แล้วหรือยัง — ใช้ได้เพราะ DDL ถูก apply ทั้งไฟล์แบบ atomic */
+/**
+ * รายชื่อไฟล์ migration **ตามลำดับใน journal** (path เต็ม)
+ * pure function: รับ JSON ที่ parse แล้ว + โฟลเดอร์ → เทสต์ได้โดยไม่ต้องมีไฟล์จริง
+ * ทำไมต้องอ่าน journal: dev DB ต้องได้ schema ชุดเดียวกับ production — ถ้า hardcode ไฟล์เดียว
+ * migration ถัดไป (เช่นเพิ่มคอลัมน์) จะไม่ถูก apply บนเครื่อง dev แล้วพังเงียบ ๆ ตอนรันแอป
+ */
+export function migrationFilesFrom(journal: unknown, dir: string): string[] {
+  // อ่านแบบ narrow ทีละชั้น (ไม่ cast ทับ) — journal เป็นไฟล์ที่คนอื่น generate จึงไม่เชื่อรูปทรงล่วงหน้า
+  const entries: unknown = journal && typeof journal === 'object' && 'entries' in journal ? journal.entries : undefined;
+  const tags = (Array.isArray(entries) ? entries : [])
+    .map((entry) => (entry && typeof entry === 'object' && 'tag' in entry ? entry.tag : undefined))
+    .filter((tag): tag is string => typeof tag === 'string' && tag !== '');
+
+  if (tags.length === 0) {
+    throw new Error(`ไม่พบรายการ migration ใน journal (${JOURNAL_FILE}) — ไฟล์อาจว่างหรือถูกย้าย`);
+  }
+  return tags.map((tag) => resolve(dir, `${tag}.sql`));
+}
+
+/** ตารางที่ใช้เช็คว่า schema ถูก apply แล้วหรือยัง — ใช้ได้เพราะ apply ทั้งชุดใน transaction เดียว */
 const SENTINEL = 'public.transactions';
 
 type DevDb = {
@@ -81,16 +103,22 @@ function create(): DevDb {
     );
     if (found.rows[0]?.present) return;
 
-    let ddl: string;
+    let files: string[];
+    let statements: string[];
     try {
-      ddl = readFileSync(DDL_FILE, 'utf8');
+      files = migrationFilesFrom(JSON.parse(readFileSync(JOURNAL_FILE, 'utf8')), MIGRATIONS_DIR);
+      // อ่านทุกไฟล์ก่อน แล้วค่อยเริ่ม transaction → ไฟล์หาย/อ่านไม่ได้ต้องไม่ทิ้ง schema ครึ่งทาง
+      statements = files.map((file) => readFileSync(file, 'utf8'));
     } catch (error) {
-      throw new Error(`อ่าน DDL ไม่ได้ที่ ${DDL_FILE} — รันจาก root ของโปรเจกต์`, { cause: error });
+      throw new Error(`อ่าน migration จาก ${MIGRATIONS_DIR} ไม่ได้ — รันจาก root ของโปรเจกต์`, { cause: error });
     }
+
     await pg.transaction(async (tx) => {
-      await tx.exec(ddl);
+      for (const sql of statements) await tx.exec(sql);
     });
-    console.log(`[jodjai] dev DB ใหม่: apply ${DDL_FILE} แล้ว (${DEV_DB_DIR})`);
+    console.log(
+      `[jodjai] dev DB ใหม่: apply ${files.length} migration (${files.map((file) => file.split('/').pop()).join(', ')}) แล้ว (${DEV_DB_DIR})`,
+    );
   })();
   // ถ้า init/DDL พังก่อนมี query แรก ต้องไม่กลายเป็น unhandled rejection ที่ฆ่า process เงียบ ๆ
   // (ตัว promise ยัง reject เหมือนเดิม — คนที่ await ready ทีหลังยังเห็น error ตัวจริง)

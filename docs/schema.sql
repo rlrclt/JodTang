@@ -249,6 +249,14 @@ create index transactions_account_idx
 create index transactions_to_account_idx
   on transactions (to_account_id, user_id);
 
+-- หน้า "รายการที่ลบแล้ว" (ถังขยะ/กู้คืน): เรียง "ล่าสุดที่ลบก่อน" = deleted_at desc, id desc
+-- index อื่นใช้ไม่ได้เลย: 4 ตัวแรก partial `where deleted_at is null` (คนละฝั่งของ predicate) และอีก 2 ตัวนำด้วย account_id
+-- วัดจริง (222k แถว · u1 มี 20k live + 2k ที่ลบ) ก่อนมี index นี้: Bitmap Heap Scan อ่าน 22k แถว ทิ้ง 20k
+--   แล้ว Sort (top-N) → shared hit 898 บัฟเฟอร์ · หลังมี index: Index Scan ตรงลำดับ ไม่มี Sort (ดู wave21)
+create index transactions_user_deleted_idx
+  on transactions (user_id, deleted_at desc, id desc)
+  where deleted_at is not null;
+
 create table budgets (
   id            uuid primary key default gen_random_uuid(),
   user_id       text not null references "user"(id) on delete cascade,
