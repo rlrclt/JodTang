@@ -5,13 +5,13 @@ import { LoadMoreLink } from '@/components/LoadMoreLink';
 import { MonthSwitcher } from '@/components/MonthSwitcher';
 import { FilterBar, SearchBox, type ActiveFilters } from '@/components/TransactionFilters';
 import { TransactionList, dayLabel, type TransactionRowView } from '@/components/TransactionRow';
-import { emptyStateFor } from '@/components/transactions-view';
+import { allMonthsRangeLabel, emptyStateFor } from '@/components/transactions-view';
 import { getDb } from '@/db';
 import { listAccounts } from '@/db/queries/accounts';
 import { listCategories, listCategoriesById, type CategoryRow } from '@/db/queries/categories';
 import { listTransactionPage } from '@/db/queries/transactions';
-import { periodMonthFromParam, periodMonthOfBkk } from '@/lib/month';
-import { withMonth } from '@/lib/month-url';
+import { periodMonthOfBkk } from '@/lib/month';
+import { monthScopeFromParam, withMonth } from '@/lib/month-url';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { gateSession } from '@/lib/session';
 
@@ -44,7 +44,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const { userId } = gate.user;
 
   const params = await searchParams;
-  const periodMonth = periodMonthFromParam(params.m);
+  // โหมด "ทุกเดือน" (wave19) — `?m=all` เท่านั้นที่หมายถึงไม่กรองเดือน (ค่าขยะอื่นยังตกกลับเดือนปัจจุบัน)
+  const scope = monthScopeFromParam(params.m);
+  const isAllMonths = scope === 'all';
   const kind = KINDS.find((value) => value === params.kind);
   const categoryId = params.categoryId && UUID_RE.test(params.categoryId) ? params.categoryId : undefined;
   const accountId = params.accountId && UUID_RE.test(params.accountId) ? params.accountId : undefined;
@@ -55,7 +57,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const activeCount = [kind, categoryId, accountId, q].filter(Boolean).length;
 
   // ตัวกรองปัจจุบันเป็น query string — ใช้เป็นฐานของทุกลิงก์ (ไม่รวม pages)
-  const base = new URLSearchParams({ m: periodMonth });
+  const base = new URLSearchParams({ m: scope });
   if (kind) base.set('kind', kind);
   if (categoryId) base.set('categoryId', categoryId);
   if (accountId) base.set('accountId', accountId);
@@ -64,6 +66,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const basePath = `/transactions?${baseQuery}`;
 
   let rows: TransactionRowView[] = [];
+  let occurredAtList: Date[] = [];
   let hasMore = false;
   let categories: CategoryRow[] = [];
   let accounts: { id: string; name: string }[] = [];
@@ -77,7 +80,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
 
     // keyset: วน N รอบตาม ?pages — รอบต่อไปใช้ nextCursor ของรอบก่อน (ไม่ใช้ OFFSET)
     const filters = {
-      periodMonth,
+      // ไม่ส่ง periodMonth = ไม่กรองเดือน (โหมด all) — keyset/index ยังใช้ตัวเดิม
+      periodMonth: isAllMonths ? undefined : scope,
       categoryIds: categoryId ? [categoryId] : undefined,
       kind,
       accountId,
@@ -100,6 +104,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       userId,
       pageRows.map((row) => row.categoryId).filter((id): id is string => id != null),
     );
+    occurredAtList = pageRows.map((txn) => txn.occurredAt);
     rows = pageRows.map((txn) => {
       const category = txn.categoryId ? categoryById.get(txn.categoryId) : undefined;
       return {
@@ -123,19 +128,20 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     return <LoadFailed message="โหลดรายการไม่สำเร็จ" />;
   }
 
-  const isCurrentMonth = periodMonth === periodMonthOfBkk();
+  const isCurrentMonth = !isAllMonths && scope === periodMonthOfBkk();
   const emptyState = emptyStateFor({
     rowCount: rows.length,
     activeFilterCount: activeCount,
     hasAnyTransaction,
     isCurrentMonth,
+    isAllMonths,
   });
 
   return (
     <div className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">รายการทั้งหมด</h1>
-        <MonthSwitcher basePath={basePath} periodMonth={periodMonth} />
+        <MonthSwitcher basePath={basePath} scope={scope} canSwitchToAll />
       </header>
 
       <SearchBox base={baseQuery} q={q ?? ''} />
@@ -145,7 +151,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         <div className="flex min-h-11 items-center justify-between gap-2 text-[13px] leading-[18px]">
           <span className="text-text-muted">กรองอยู่ {activeCount} ตัว</span>
           {/* ล้างตัวกรอง = คง `m` ไว้ (spec §2) */}
-          <Link href={withMonth('/transactions', periodMonth)} className="flex min-h-11 items-center font-semibold text-[var(--balance)]">
+          <Link href={withMonth('/transactions', scope)} className="flex min-h-11 items-center font-semibold text-[var(--balance)]">
             ล้างตัวกรอง
           </Link>
         </div>
@@ -153,12 +159,19 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
 
       {rows.length > 0 ? (
         <>
+          {/* ตัวบอกช่วงเวลาของโหมดทุกเดือน — อยู่เหนือลิสต์ให้เห็นก่อนว่ากำลังดูอะไร (spec §4) */}
+          {isAllMonths ? (
+            <p className="text-[13px] leading-[18px] text-text-muted">{allMonthsRangeLabel(occurredAtList, hasMore, pages >= MAX_PAGES)}</p>
+          ) : null}
           <TransactionList items={rows} />
-          <p className="text-[13px] leading-[18px] text-text-muted">แสดง {rows.length} รายการ</p>
+          {!isAllMonths ? (
+            <p className="text-[13px] leading-[18px] text-text-muted">แสดง {rows.length} รายการ</p>
+          ) : null}
           {hasMore && pages < MAX_PAGES ? (
-            <LoadMoreLink href={withMonth(`/transactions?${baseQuery}`, periodMonth, { pages: pages + 1 })} />
-          ) : (
+            <LoadMoreLink href={withMonth(`/transactions?${baseQuery}`, scope, { pages: pages + 1 })} />
+          ) : isAllMonths && hasMore ? null : (
             // ถึงเพดาน 10 หน้า (hasMore ยังจริง) ก็ต้องมีข้อความจบ — ไม่ใช่ทางตันที่ไม่มีทั้งปุ่มและข้อความ
+            // โหมดทุกเดือน: ป้ายช่วงเวลาข้างบนบอก "ยังมีอีก — ลดช่วงด้วยตัวกรอง" อยู่แล้ว จึงไม่ซ้ำและไม่ขัดกัน
             <p className="text-center text-[13px] leading-[18px] text-text-muted">— จบรายการ —</p>
           )}
         </>
@@ -166,9 +179,20 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         <div className="flex flex-col items-start gap-2 rounded-card border border-border bg-surface p-4">
           <p className="text-text-muted">{emptyState.message}</p>
           {emptyState.action === 'clear-filters' ? (
-            <Link href={withMonth('/transactions', periodMonth)} className="flex min-h-11 items-center font-semibold text-[var(--balance)]">
-              ล้างตัวกรอง
-            </Link>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href={withMonth('/transactions', scope)} className="flex min-h-11 items-center font-semibold text-[var(--balance)]">
+                ล้างตัวกรอง
+              </Link>
+              {emptyState.offerAllMonths ? (
+                // ทางตันที่ทำให้งานนี้เกิด: ค้นในเดือนเดียวไม่เจอ ทั้งที่ของอยู่เดือนอื่น (wave19 §4)
+                <Link
+                  href={withMonth(basePath, 'all')}
+                  className="flex min-h-11 items-center rounded-btn bg-balance px-4 font-bold text-on-accent"
+                >
+                  ค้นหาทุกเดือน
+                </Link>
+              ) : null}
+            </div>
           ) : null}
           {emptyState.action === 'back-to-current' ? (
             <Link href={withMonth('/transactions', periodMonthOfBkk())} className="flex min-h-11 items-center font-semibold text-[var(--balance)]">

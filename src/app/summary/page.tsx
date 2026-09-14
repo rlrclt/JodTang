@@ -170,7 +170,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
     <div className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">สรุป</h1>
-        <MonthSwitcher basePath="/summary" periodMonth={periodMonth} />
+        <MonthSwitcher basePath="/summary" scope={periodMonth} />
       </header>
 
       <section aria-labelledby="trend-label" className="rounded-card border border-border bg-surface p-4 shadow-[var(--shadow-card)]">

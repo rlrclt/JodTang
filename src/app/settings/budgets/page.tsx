@@ -78,7 +78,7 @@ export default async function BudgetsPage({ searchParams }: { searchParams: Prom
         <h1 className="text-2xl font-semibold">งบประมาณ</h1>
       </header>
 
-      <MonthSwitcher basePath="/settings/budgets" periodMonth={periodMonth} />
+      <MonthSwitcher basePath="/settings/budgets" scope={periodMonth} />
 
       <p className="text-[13px] leading-[18px] text-text-muted">
         งบเป็นรายเดือน ต่อหมวด · ตั้งล่วงหน้า/ย้อนหลังได้ · เดือนใหม่ต้องตั้งใหม่ (ไม่พกยอดที่เหลือ)

@@ -2,6 +2,8 @@
  * ตรรกะบริสุทธิ์ของหน้ารายการทั้งหมด (ใช้ร่วมกับ client component จึงอยู่ที่ components/ ไม่ใช่ app/ — components ต้องไม่ import จาก app) — แยกออกมาเพื่อให้ทดสอบด้วย `node --test` ได้โดยไม่ต้องมี DOM/React
  * (บั๊ก 2 ตัวของ wave 8 อยู่ตรงนี้: URL ของ "ล้างตัวกรอง" และเกณฑ์แยกสถานะว่าง)
  */
+// relative import + .ts ต่อท้าย เพราะเทสต์รันด้วย `node --test` ตรง ๆ (ไม่รู้จัก alias @/)
+import { formatMonthLabelTh, periodMonthOfBkk } from '../lib/month.ts';
 
 /**
  * เพดานความยาวคำค้นที่ UI ยอมให้พิมพ์/วาง (wave15b)
@@ -48,7 +50,16 @@ export function searchInputAfterUrlChange(urlQ: string, lastRequested: string, c
 /** สิ่งที่ผู้ใช้ต้องทำต่อจากสถานะว่าง — คนละปุ่มสำหรับคนละสาเหตุ */
 export type EmptyAction = 'open-add' | 'back-to-current' | 'clear-filters' | 'none';
 
-export type EmptyState = { message: string; action: EmptyAction };
+export type EmptyState = {
+  message: string;
+  action: EmptyAction;
+  /**
+   * เสนอปุ่ม "ค้นหาทุกเดือน" ควบคู่ไปด้วยไหม (wave19 §4)
+   * เปิดเมื่อ: อยู่ในโหมดเดือน + มีคำค้น/ตัวกรอง + ไม่เจอแถว — ทางตันที่ทำให้งานนี้เกิด
+   * (ในโหมดทุกเดือนไม่ต้องเสนอ เพราะเราอยู่ในทุกเดือนแล้ว)
+   */
+  offerAllMonths: boolean;
+};
 
 /**
  * สถานะว่างของหน้ารายการ (spec §3) — **เกณฑ์เดียว** ตัดสินทั้งข้อความและปุ่ม
@@ -68,16 +79,47 @@ export function emptyStateFor(input: {
   hasAnyTransaction: boolean;
   /** งวดเดือนที่ดูอยู่ = เดือนปัจจุบัน (Asia/Bangkok) ไหม */
   isCurrentMonth: boolean;
+  /** กำลังดูทุกเดือนอยู่ไหม (wave19) — โหมด all ห้ามมีข้อความที่พูดถึง "เดือนนี้" */
+  isAllMonths?: boolean;
 }): EmptyState | null {
   if (input.rowCount > 0) return null;
 
   if (input.activeFilterCount > 0) {
-    return { message: 'ไม่พบรายการที่ตรงกับตัวกรอง', action: 'clear-filters' };
+    // ไม่เจอในเดือนนี้แต่ผู้ใช้อาจมีของเดือนอื่น → เสนอ "ค้นหาทุกเดือน" คู่กับ "ล้างตัวกรอง" (wave19 §4)
+    return { message: 'ไม่พบรายการที่ตรงกับตัวกรอง', action: 'clear-filters', offerAllMonths: !input.isAllMonths };
   }
 
   if (!input.hasAnyTransaction) {
-    return { message: 'เริ่มบันทึกรายการแรก', action: 'open-add' };
+    return { message: 'เริ่มบันทึกรายการแรก', action: 'open-add', offerAllMonths: false };
   }
 
-  return { message: 'เดือนนี้ยังไม่มีรายการ', action: input.isCurrentMonth ? 'none' : 'back-to-current' };
+  // ผู้ใช้มีรายการอยู่ (ทุกเดือน) แต่ช่วงที่ดูว่าง
+  // โหมด all: ตามทฤษฎีไม่ควรเกิด (ไม่มีตัวกรอง + มีข้อมูล = ต้องมีแถว) แต่กันไว้ไม่ให้ข้อความ "เดือนนี้" หลุดในโหมด all
+  if (input.isAllMonths) return { message: 'ไม่พบรายการ', action: 'none', offerAllMonths: false };
+
+  return {
+    message: 'เดือนนี้ยังไม่มีรายการ',
+    action: input.isCurrentMonth ? 'none' : 'back-to-current',
+    offerAllMonths: false,
+  };
+}
+
+/**
+ * ป้ายบอกช่วงเวลาที่โหลดแล้วในโหมดทุกเดือน (wave19 §3) — คำนวณจากแถวที่โหลด ไม่มี query เพิ่ม
+ * แถวเรียงใหม่→เก่า (`occurred_at desc`) → เดือนเก่าสุดคือแถวสุดท้ายที่โหลด
+ * ข้อความ: "ทุกเดือน · ตั้งแต่ <เก่าสุด> ถึง <ใหม่สุด> · N รายการ" (+ "ยังมีอีก — ลดช่วงด้วยตัวกรอง" เมื่อถึงเพดาน)
+ */
+export function allMonthsRangeLabel(occurredAt: readonly Date[], hasMore: boolean, atMaxPages = false): string {
+  if (occurredAt.length === 0) return '';
+  const oldest = periodMonthOfBkk(occurredAt[occurredAt.length - 1]);
+  const newest = periodMonthOfBkk(occurredAt[0]);
+  const range = oldest === newest ? formatMonthLabelTh(newest) : `ตั้งแต่ ${formatMonthLabelTh(oldest)} ถึง ${formatMonthLabelTh(newest)}`;
+  const label = `ทุกเดือน · ${range} · ${occurredAt.length} รายการ`;
+  if (!hasMore) return label;
+
+  // คำแนะนำต้องตรงกับสิ่งที่ผู้ใช้ทำได้ตอนนี้ (wave19b review): ยังกด "โหลดเพิ่ม" ได้ → บอกให้กด
+  // ถึงเพดานแล้วเท่านั้นจึงบอกให้ลดช่วงด้วยตัวกรอง (ไม่งั้นข้อความขัดกับปุ่มที่อยู่ข้างล่าง)
+  return atMaxPages
+    ? `${label} · ยังมีอีก — ลดช่วงด้วยตัวกรอง`
+    : `${label} · ยังมีอีก — กด "โหลดเพิ่ม" ด้านล่าง`;
 }
