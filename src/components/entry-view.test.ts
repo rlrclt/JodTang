@@ -11,6 +11,7 @@ import {
   bangkokTimeValue,
   entryErrorField,
   occurredAtForEdit,
+  prefillEditForm,
   bangkokTodayValue,
   bangkokYesterdayValue,
   type EntryOptions,
@@ -188,4 +189,43 @@ test('entryErrorField: map ข้อความ error ไทย → ช่อ�
   assert.equal(entryErrorField('ไม่พบรายการนี้ (อาจถูกลบไปแล้วหรือไม่ใช่ของคุณ)'), null);
   assert.equal(entryErrorField('เซสชันหมดอายุ — เข้าสู่ระบบใหม่แล้วลองอีกครั้ง'), null);
   assert.equal(entryErrorField('บันทึกการแก้ไขไม่สำเร็จ ลองใหม่ (เน็ตมีปัญหา)'), null);
+});
+
+// --- wave22: prefill ต้องไม่ทับสิ่งที่ผู้ใช้พิมพ์ระหว่างรอโหลด ---
+const SERVER_FORM = {
+  kind: 'expense' as const,
+  amount: '123.45',
+  accountId: 'acc-server',
+  toAccountId: null,
+  categoryId: 'cat-server',
+  note: 'โน้ตเดิม',
+  date: '2026-09-14',
+};
+const USER_FORM = {
+  kind: 'expense' as const,
+  amount: '200.00',
+  accountId: null,
+  toAccountId: null,
+  categoryId: null,
+  note: 'พิมพ์ระหว่างรอ',
+  date: '',
+};
+
+test('prefillEditForm: ช่องที่ผู้ใช้แก้ระหว่างรอโหลด ต้องคงค่าที่ผู้ใช้พิมพ์ (บั๊ก cold start)', () => {
+  const merged = prefillEditForm(SERVER_FORM, USER_FORM, new Set(['amount', 'note']));
+  assert.equal(merged.amount, '200.00', 'จำนวนที่พิมพ์ต้องไม่ถูกทับด้วยค่าจาก server');
+  assert.equal(merged.note, 'พิมพ์ระหว่างรอ');
+  // ช่องที่ยังไม่แตะ = รับค่าจาก server (ฟอร์มยัง prefill ครบ)
+  assert.equal(merged.accountId, 'acc-server');
+  assert.equal(merged.categoryId, 'cat-server');
+  assert.equal(merged.date, '2026-09-14');
+});
+
+test('prefillEditForm: ไม่มีใครแตะ → ได้ค่าจาก server ทั้งชุด', () => {
+  assert.deepEqual(prefillEditForm(SERVER_FORM, USER_FORM, new Set()), SERVER_FORM);
+});
+
+test('prefillEditForm: kind รับจาก server เสมอ (โหมดแก้แก้ทิศทางไม่ได้)', () => {
+  const merged = prefillEditForm(SERVER_FORM, { ...USER_FORM, kind: 'income' }, new Set(['amount']));
+  assert.equal(merged.kind, 'expense');
 });

@@ -19,10 +19,13 @@ import {
 } from '@/components/entry-actions';
 import {
   type EntryErrorField,
+  type EntryField,
+  type EntryFormValues,
   type EntryKind,
   type EntryOptions,
   ENTRY_KIND_LABELS,
   entryErrorField,
+  prefillEditForm,
   SUGGESTED_CATEGORY_NAMES,
   bangkokDateValue,
   bangkokTodayValue,
@@ -150,6 +153,19 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
   const [creating, setCreating] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  /**
+   * ช่องที่ผู้ใช้แก้เองไประหว่างรอโหลด (wave22) — บน Neon cold start หน้าต่างนี้ยาว 2–4 วินาที
+   * ค่าที่โหลดมาทีหลังต้องไม่ทับสิ่งที่ผู้ใช้พิมพ์ไปแล้ว
+   */
+  const touched = useRef(new Set<EntryField>());
+  const markTouched = (field: EntryField) => {
+    touched.current.add(field);
+  };
+  /** ค่าฟอร์มล่าสุดสำหรับ callback ที่รอ async (load) — closure ของ useCallback จะเห็นค่าเก่าไมได้ */
+  const formRef = useRef<EntryFormValues | null>(null);
+  useEffect(() => {
+    formRef.current = { kind, amount, accountId, toAccountId, categoryId, note, date };
+  });
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -170,15 +186,28 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
       setOptions(optionsResult.options);
 
       if (entryResult?.ok) {
-        // prefill ค่าจริงจาก DB · kind ตั้งครั้งเดียวตรงนี้ (โหมดแก้ไม่มีชิปเปลี่ยนทิศทาง)
+        // prefill ค่าจริงจาก DB — **ช่องที่ผู้ใช้แก้ไประหว่างรอโหลดต้องคงค่าของผู้ใช้ไว้** (wave22)
         const row: EditableEntry = entryResult.entry;
-        setKind(row.kind);
-        setAmount(inputFromSatang(row.amount));
-        setAccountId(row.accountId);
-        setToAccountId(row.toAccountId);
-        setCategoryId(row.categoryId);
-        setNote(row.note ?? '');
-        setDate(bangkokDateValue(new Date(row.occurredAt)));
+        const merged = prefillEditForm(
+          {
+            kind: row.kind,
+            amount: inputFromSatang(row.amount),
+            accountId: row.accountId,
+            toAccountId: row.toAccountId,
+            categoryId: row.categoryId,
+            note: row.note ?? '',
+            date: bangkokDateValue(new Date(row.occurredAt)),
+          },
+          formRef.current ?? EMPTY_FORM,
+          touched.current,
+        );
+        setKind(merged.kind);
+        setAmount(merged.amount);
+        setAccountId(merged.accountId);
+        setToAccountId(merged.toAccountId);
+        setCategoryId(merged.categoryId);
+        setNote(merged.note);
+        setDate(merged.date);
         return;
       }
 
@@ -302,6 +331,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
             }
           : prev,
       );
+      markTouched('account');
       setAccountId(result.id);
       setCategoryId((prev) => prev ?? (options ? defaultCategoryId(options, kind === 'transfer' ? 'expense' : kind) : null));
     } catch {
@@ -335,6 +365,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
             }
           : prev,
       );
+      markTouched('category');
       setCategoryId(result.id);
       setPicker(null);
     } catch {
@@ -407,7 +438,10 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
           errorId={errorId('amount')}
           label="จำนวนเงิน (บาท)"
           value={amount}
-          onChange={setAmount}
+          onChange={(next) => {
+            markTouched('amount');
+            setAmount(next);
+          }}
           disabled={busy !== null}
         />
 
@@ -470,7 +504,10 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
           errorId={errorId('note')}
           label="โน้ต (ไม่บังคับ)"
           value={note}
-          onChange={setNote}
+          onChange={(next) => {
+            markTouched('note');
+            setNote(next);
+          }}
           disabled={busy !== null}
           placeholder="เช่น กาแฟเช้า"
         />
@@ -486,7 +523,10 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
                 id="entry-date"
                 type="date"
                 value={date}
-                onChange={(event) => setDate(event.target.value)}
+                onChange={(event) => {
+                  markTouched('date');
+                  setDate(event.target.value);
+                }}
                 disabled={busy !== null}
                 aria-invalid={errorId('date') ? true : undefined}
                 aria-describedby={errorId('date')}
@@ -494,7 +534,10 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
               />
               <button
                 type="button"
-                onClick={() => setDate(bangkokTodayValue())}
+                onClick={() => {
+                  markTouched('date');
+                  setDate(bangkokTodayValue());
+                }}
                 disabled={busy !== null}
                 aria-pressed={date === bangkokTodayValue()}
                 className={`${optionChipClass(date === bangkokTodayValue())} disabled:opacity-40`}
@@ -503,7 +546,10 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
               </button>
               <button
                 type="button"
-                onClick={() => setDate(bangkokYesterdayValue())}
+                onClick={() => {
+                  markTouched('date');
+                  setDate(bangkokYesterdayValue());
+                }}
                 disabled={busy !== null}
                 aria-pressed={date === bangkokYesterdayValue()}
                 className={`${optionChipClass(date === bangkokYesterdayValue())} disabled:opacity-40`}
@@ -525,6 +571,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
               options={accounts}
               value={accountId ?? undefined}
               onChange={(next) => {
+                markTouched('account');
                 setAccountId(next ?? null);
                 setToAccountId((prev) => (prev === next ? null : prev));
                 setPicker(null); // เลือกแล้วกลับไปที่แป้นทันที (เปลี่ยนกระเป๋า = แตะเดียว)
@@ -540,6 +587,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
               options={accounts.filter((account) => account.id !== accountId)}
               value={toAccountId ?? undefined}
               onChange={(next) => {
+                markTouched('toAccount');
                 setToAccountId(next ?? null);
                 setPicker(null);
               }}
@@ -555,6 +603,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
                 options={categories}
                 value={categoryId ?? undefined}
                 onChange={(next) => {
+                  markTouched('category');
                   setCategoryId(next ?? null);
                   setPicker(null);
                 }}
@@ -668,6 +717,17 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
     </>
   );
 }
+
+/** ค่าฟอร์มว่าง — ใช้เป็นค่าเริ่มต้นของ ref ก่อน render รอบแรก (load รอ network เสมอ จึงไม่ทันใช้อยู่ดี) */
+const EMPTY_FORM: EntryFormValues = {
+  kind: 'expense',
+  amount: '',
+  accountId: null,
+  toAccountId: null,
+  categoryId: null,
+  note: '',
+  date: '',
+};
 
 /** คำที่ใช้ต่อท้ายข้อความ "ยังไม่มีหมวด…" */
 const CATEGORY_KIND_HINT: Record<'income' | 'expense', string> = {

@@ -104,6 +104,47 @@ export function canTransferWith(accountCount: number): boolean {
 }
 
 /**
+ * ค่าฟอร์มของชีต (wave22) — ใช้ทั้งโหมดเพิ่มและแก้
+ * `amount` เป็นสตริงบาทที่ผู้ใช้เห็นในช่อง (ไม่ใช่สตางค์) · `date` เป็น 'YYYY-MM-DD' ตามปฏิทินไทย
+ */
+export type EntryFormValues = {
+  kind: EntryKind;
+  amount: string;
+  accountId: string | null;
+  toAccountId: string | null;
+  categoryId: string | null;
+  note: string;
+  date: DateInputValue;
+};
+
+/** ช่องที่ผู้ใช้แก้เองได้ในชีต (ใช้เป็นกุญแจของ "แก้ไปแล้ว" ตอน prefill) */
+export type EntryField = 'amount' | 'account' | 'toAccount' | 'category' | 'note' | 'date';
+
+/**
+ * ค่าฟอร์มหลังโหลดของเดิมเสร็จ (wave22) — **ห้ามทับสิ่งที่ผู้ใช้พิมพ์ไประหว่างรอโหลด**
+ *
+ * บน Neon cold start หน้าต่างรอ `loadEntryForEdit` ยาว 2–4 วินาทีจริง ถ้าเอาค่าจาก server ไปตั้งทับ
+ * ผู้ใช้ที่พิมพ์ไปแล้วจะเสียงานโดยไม่รู้ตัว (บั๊กที่ซ้อม deploy เจอ: พิมพ์ 200.00 แล้วช่องเด้งกลับ 123.45)
+ * ⇒ ช่องที่อยู่ใน `touched` คงค่าปัจจุบันไว้ · ช่องที่ยังไม่แตะจึงรับค่าจาก server
+ * `kind` แก้ไม่ได้ในโหมดแก้ จึงรับค่าจาก server เสมอ (ผู้เรียกส่งค่าที่แปลงแล้วเข้ามา — ฟังก์ชันนี้ไม่แปลงหน่วยเอง)
+ */
+export function prefillEditForm(
+  fromServer: EntryFormValues,
+  current: EntryFormValues,
+  touched: ReadonlySet<EntryField>,
+): EntryFormValues {
+  return {
+    kind: fromServer.kind, // โหมดแก้แก้ทิศทางไม่ได้ — รับจาก server เสมอ
+    amount: touched.has('amount') ? current.amount : fromServer.amount,
+    accountId: touched.has('account') ? current.accountId : fromServer.accountId,
+    toAccountId: touched.has('toAccount') ? current.toAccountId : fromServer.toAccountId,
+    categoryId: touched.has('category') ? current.categoryId : fromServer.categoryId,
+    note: touched.has('note') ? current.note : fromServer.note,
+    date: touched.has('date') ? current.date : fromServer.date,
+  };
+}
+
+/**
  * ช่องของชีตเพิ่ม/แก้รายการที่ข้อความ error ชี้ถึง (wave18c)
  * ใช้ทำเครื่องหมาย `aria-invalid` เฉพาะช่องที่ผิดจริง — ไม่ประทับทั้งชีต
  * แมปจากคำในข้อความ ValidationError ของชั้นข้อมูล (ข้อความไทยคงที่ตาม mutations) · ไม่รู้จัก = null (ไม่ทำเครื่องหมายผิด)
