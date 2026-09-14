@@ -243,6 +243,28 @@ export async function listTransactionPage(
   };
 }
 
+/** แถวสำหรับฟอร์มแก้: TxnRow + `note` (ฟอร์มต้อง prefill โน้ต แต่รายการในลิสต์ไม่ต้องมี — จึงไม่ใส่ใน TxnRow) */
+export type EditableTxn = TxnRow & { note: string | null };
+
+/**
+ * โหลดรายการเดียวสำหรับ "โหมดแก้" (ชีตแก้รายการ) — **1 query**
+ *
+ * กติกา: ของผู้ใช้คนนี้และยังไม่ถูกลบเท่านั้น · **ไม่พบ = `null` ไม่ throw** (ต่างจาก update/softDelete ที่โยน
+ * ValidationError) เพราะที่นี่คือการ "อ่านเพื่อแสดงฟอร์ม" — ผู้ใช้ที่เปิดลิงก์เก่า/ถูกลบไปแล้วต้องได้หน้าจอ
+ * "ไม่พบรายการ" ไม่ใช่ error 500 · ผู้เรียก (server component/action) ตัดสินเองว่าจะแสดงข้อความอะไร
+ * `occurredAt` เป็น `Date` ของ JS (timestamptz) — การแสดงผล/แปลงเป็นวันที่ไทยเป็นหน้าที่ UI
+ */
+export async function loadEntryForEdit(db: Db, userId: string, id: string): Promise<EditableTxn | null> {
+  const rows = await db
+    .select({ ...TXN_COLUMNS, note: transactions.note })
+    .from(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.userId, userId), isNull(transactions.deletedAt)))
+    .limit(1);
+
+  const row = rows[0];
+  return row ? { ...toRows([row])[0], note: row.note } : null;
+}
+
 /** 1 เดือนของแนวโน้ม — สตางค์ทั้งหมด (สูตรอยู่ src/lib/money.ts) */
 export type MonthTrend = {
   periodMonth: PeriodMonth;
