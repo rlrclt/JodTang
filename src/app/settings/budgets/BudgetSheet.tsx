@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AmountKeypad, inputFromSatang, satangFromInput } from '@/components/AmountKeypad';
 import { formatSatang } from '@/lib/money';
 
+import { announce } from '@/components/announce-store';
+import { settingsErrorField } from '@/components/settings-view';
 import { clearBudgetAction, saveBudgetAction, type BudgetResult } from './actions';
 
 /** หมวดรายจ่าย 1 แถวในหน้านี้ + งบของเดือนปัจจุบันถ้ามี (สตางค์) */
@@ -71,6 +73,7 @@ export function BudgetSheet({ item, periodMonth, periodLabel, onOptimistic, onDo
     try {
       const result = await call();
       if (result.ok) {
+        announce(mode === 'save' ? 'บันทึกงบแล้ว' : 'ล้างงบแล้ว'); // ทุกการเขียนต้องได้ยินผล (wave18b)
         onDone();
         return;
       }
@@ -99,7 +102,7 @@ export function BudgetSheet({ item, periodMonth, periodLabel, onOptimistic, onDo
   return (
     <dialog
       ref={dialogRef}
-      aria-label={`งบของ ${item.name}`}
+      aria-labelledby="budget-sheet-title"
       onClose={onClose}
       onClick={(event) => {
         if (event.target === dialogRef.current) dialogRef.current?.close(); // แตะฉากหลัง = ปิด (§2)
@@ -114,7 +117,9 @@ export function BudgetSheet({ item, periodMonth, periodLabel, onOptimistic, onDo
           className="size-2.5 shrink-0 rounded-pill"
           style={{ background: item.color ? `var(${item.color})` : 'var(--balance)' }}
         />
-        <h2 className="min-w-0 flex-1 truncate text-xl font-semibold">{item.name}</h2>
+        <h2 id="budget-sheet-title" className="min-w-0 flex-1 truncate text-xl font-semibold">
+          {item.name}
+        </h2>
         {item.archived ? (
           <span className="shrink-0 rounded-pill border border-border-strong px-2 py-0.5 text-[13px] leading-[18px] text-text-muted">
             เลิกใช้แล้ว
@@ -135,6 +140,7 @@ export function BudgetSheet({ item, periodMonth, periodLabel, onOptimistic, onDo
         onChange={setAmount}
         inputRef={inputRef}
         disabled={item.archived || busy !== null}
+        errorId={error && settingsErrorField(error) === 'amount' ? 'budget-error' : undefined}
         hint="งบเป็นของเดือนนี้เดือนเดียว ไม่พกไปเดือนถัดไป"
       />
 
@@ -143,7 +149,7 @@ export function BudgetSheet({ item, periodMonth, periodLabel, onOptimistic, onDo
       ) : null}
 
       {error ? (
-        <p role="alert" className="mt-2 text-[13px] leading-[18px] text-warn">
+        <p id="budget-error" role="alert" className="mt-2 text-[13px] leading-[18px] text-warn">
           ⚠ {error}
         </p>
       ) : null}

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 
 import { formatSatang } from '@/lib/money';
+import { announce } from '@/components/announce-store';
 
 import { ACCOUNT_KIND_LABELS, splitByArchived } from '@/components/settings-view';
 
@@ -67,6 +68,7 @@ export function AccountList({ items }: { items: AccountItem[] }) {
     try {
       const result = await restoreAccountAction(row.id);
       if (result.ok) {
+        announce('กู้คืนกระเป๋าแล้ว'); // wave18b: กู้คืนเป็นการเขียน ต้องได้ยินผลเหมือน archive
         startTransition(() => router.refresh());
         return;
       }
@@ -124,8 +126,10 @@ export function AccountList({ items }: { items: AccountItem[] }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{row.name}</span>
                     <span className="num block truncate text-[13px] leading-[18px] text-text-muted">
-                      {formatSatang(row.balance)} ·{' '}
-                      {ACCOUNT_KIND_LABELS[row.kind as keyof typeof ACCOUNT_KIND_LABELS] ?? row.kind}
+                      {/* ข้อความบรรทัดเดียว (ไม่แยก text node) — ชื่อที่ screen reader อ่านจึงมีช่องว่างครบ */}
+                      {`${formatSatang(row.balance)} · ${
+                        ACCOUNT_KIND_LABELS[row.kind as keyof typeof ACCOUNT_KIND_LABELS] ?? row.kind
+                      }`}
                     </span>
                   </span>
                   <span aria-hidden="true" className="shrink-0 text-text-muted">
@@ -150,8 +154,9 @@ export function AccountList({ items }: { items: AccountItem[] }) {
                         </span>
                       </span>
                       <span className="num block truncate text-[13px] leading-[18px] text-text-muted opacity-70">
-                        {formatSatang(row.balance)} ·{' '}
-                        {ACCOUNT_KIND_LABELS[row.kind as keyof typeof ACCOUNT_KIND_LABELS] ?? row.kind}
+                        {`${formatSatang(row.balance)} · ${
+                          ACCOUNT_KIND_LABELS[row.kind as keyof typeof ACCOUNT_KIND_LABELS] ?? row.kind
+                        }`}
                       </span>
                     </span>
                     <button

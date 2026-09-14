@@ -53,6 +53,8 @@ type Props = {
   hint?: ReactNode;
   inputRef?: Ref<HTMLInputElement>;
   disabled?: boolean;
+  /** id ของข้อความ error ของชีต (a11y) — มีค่า = ช่องจำนวนถูกทำเครื่องหมายว่าผิดและผูกกับข้อความนั้น */
+  errorId?: string;
 };
 
 /**
@@ -60,7 +62,7 @@ type Props = {
  * screen reader/คีย์บอร์ดระบบใช้ได้ · ตัวเลข tabular + ชิดขวา (§1.2)
  * แยกจากแป้นเพื่อให้ชีต "เพิ่มรายการ" วางแถวสรุป/โน้ตคั่นกลางได้ (wave 10b spec §4)
  */
-export function AmountInput({ id, label, value, onChange, hint, inputRef, disabled }: Props) {
+export function AmountInput({ id, label, value, onChange, hint, inputRef, disabled, errorId }: Props) {
   return (
     <>
       <label htmlFor={id} className="mt-3 block text-[13px] leading-[18px] text-text-muted">
@@ -78,6 +80,8 @@ export function AmountInput({ id, label, value, onChange, hint, inputRef, disabl
           inputMode="decimal"
           autoComplete="off"
           enterKeyHint="done"
+          aria-invalid={errorId ? true : undefined}
+          aria-describedby={errorId}
           placeholder="0"
           disabled={disabled}
           className="num min-h-11 w-full bg-transparent text-right text-2xl font-semibold outline-none"

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 
 import { CATEGORY_KIND_LABELS, splitByArchived } from '@/components/settings-view';
+import { announce } from '@/components/announce-store';
 
 import { restoreCategoryAction } from './actions';
 import { CategorySheet, type CategoryItem, type CategoryPatch } from './CategorySheet';
@@ -68,6 +69,7 @@ export function CategoryList({ items }: { items: CategoryItem[] }) {
     try {
       const result = await restoreCategoryAction(row.id);
       if (result.ok) {
+        announce('กู้คืนหมวดแล้ว'); // wave18b: กู้คืนเป็นการเขียน ต้องได้ยินผลเหมือน archive
         startTransition(() => router.refresh());
         return;
       }
@@ -128,7 +130,7 @@ export function CategoryList({ items }: { items: CategoryItem[] }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{row.name}</span>
                     <span className="block truncate text-[13px] leading-[18px] text-text-muted">
-                      {CATEGORY_KIND_LABELS[row.kind]} · {row.usage} รายการ
+                      {`${CATEGORY_KIND_LABELS[row.kind]} · ${row.usage} รายการ`}
                     </span>
                   </span>
                   <span aria-hidden="true" className="shrink-0 text-text-muted">
@@ -153,7 +155,7 @@ export function CategoryList({ items }: { items: CategoryItem[] }) {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold text-text-muted">{row.name}</span>
                       <span className="block truncate text-[13px] leading-[18px] text-text-muted">
-                        {CATEGORY_KIND_LABELS[row.kind]} · {row.usage} รายการ
+                        {`${CATEGORY_KIND_LABELS[row.kind]} · ${row.usage} รายการ`}
                       </span>
                     </span>
                     <button

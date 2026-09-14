@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  settingsErrorField,
   ACCOUNT_KIND_LABELS,
   ACCOUNT_KIND_OPTIONS,
   CHART_TOKENS,
@@ -65,4 +66,13 @@ test('แยกกลุ่ม active/เลิกใช้แล้ว โด�
 
 test('ไม่มีแถวเลย → ทั้งสองกลุ่มว่าง', () => {
   assert.deepEqual(splitByArchived([]), { active: [], archived: [] });
+});
+
+test('settingsErrorField: map ข้อความ error → ช่อง (ชื่อ/ยอด/จำนวน)', () => {
+  assert.equal(settingsErrorField('ต้องระบุชื่อหมวด'), 'name');
+  assert.equal(settingsErrorField('มีชื่อนี้อยู่แล้วในหมวดที่ใช้งาน'), 'name'); // ชื่อซ้ำ = ช่องชื่อ
+  assert.equal(settingsErrorField('ต้องระบุชื่อกระเป๋า'), 'name');
+  assert.equal(settingsErrorField('ยอดตั้งต้นเกินช่วงที่ระบุ'), 'balance');
+  assert.equal(settingsErrorField('จำนวนเงินเกินเพดานที่ระบุ'), 'amount');
+  assert.equal(settingsErrorField('บันทึกไม่สำเร็จ ลองใหม่ (เน็ตมีปัญหา)'), null);
 });

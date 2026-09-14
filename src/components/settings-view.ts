@@ -76,3 +76,16 @@ export function splitByArchived<T extends { archived: boolean }>(
   for (const row of rows) (row.archived ? archived : active).push(row);
   return { active, archived };
 }
+
+/**
+ * ช่องของชีตตั้งค่าที่ข้อความ error ชี้ถึง (wave18c) — คุม `aria-invalid` ให้ตรงช่อง
+ * ชีตหมวด/กระเป๋าใช้ 'name'/'balance' · ชีตงบใช้ 'amount' · ไม่รู้จัก = null (ไม่ทำเครื่องหมายผิด)
+ */
+export type SettingsErrorField = 'name' | 'balance' | 'amount';
+
+export function settingsErrorField(message: string): SettingsErrorField | null {
+  if (message.includes('ชื่อ')) return 'name'; // รวมเคสชื่อซ้ำ ('มีชื่อนี้อยู่แล้วในหมวดที่ใช้งาน')
+  if (message.includes('ยอด')) return 'balance';
+  if (message.includes('จำนวน') || message.includes('งบ')) return 'amount';
+  return null;
+}

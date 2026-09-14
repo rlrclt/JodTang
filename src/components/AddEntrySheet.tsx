@@ -18,9 +18,11 @@ import {
   type EditableEntry,
 } from '@/components/entry-actions';
 import {
+  type EntryErrorField,
   type EntryKind,
   type EntryOptions,
   ENTRY_KIND_LABELS,
+  entryErrorField,
   SUGGESTED_CATEGORY_NAMES,
   bangkokDateValue,
   bangkokTodayValue,
@@ -112,7 +114,7 @@ export function AddEntryFab() {
 
       <dialog
         ref={dialogRef}
-        aria-label={target?.mode === 'edit' ? 'แก้ไขรายการ' : 'เพิ่มรายการ'}
+        aria-labelledby="entry-sheet-title"
         onClose={() => setTarget(null)}
         className="mt-auto mb-0 flex max-h-[100dvh] w-full max-w-[430px] flex-col rounded-t-[20px] border-0 bg-surface p-0 text-text shadow-[var(--shadow-sheet)] backdrop:bg-[rgb(2_6_23_/_0.45)] sm:mx-auto"
       >
@@ -198,6 +200,10 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
   const blockReason = options
     ? entryBlockReason({ kind, amountSatang: satang, accountId, toAccountId, categoryId, accountCount: accounts.length })
     : null;
+  // error รายช่อง: ทำเครื่องหมาย aria-invalid เฉพาะช่องที่ข้อความชี้ถึง (ไม่ประทับทั้งชีต)
+  const errorField: EntryErrorField | null = error ? entryErrorField(error) : null;
+  const errorId = (field: EntryErrorField) => (errorField === field ? 'entry-error' : undefined);
+
   // โหมดแก้ต้องมีวันที่จริง (ล้างช่องวันที = '' → ห้ามบันทึก ไม่ปล่อยให้ action โยนกลับมา)
   const dateOk = !editing || date !== '';
   const canSave =
@@ -240,7 +246,8 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
       }
       // design §2: haptic ตอนบันทึกสำเร็จ — iOS ไม่มี navigator.vibrate จึงต้องมี fallback (ปุ่มยุบ 100ms ด้วย active:scale)
       if ('vibrate' in navigator) navigator.vibrate(10);
-      if (entryId) announce('บันทึกการแก้ไขแล้ว'); // ประกาศผ่าน live region ถาวรใน layout (aria-live)
+      // ประกาศผ่าน live region ถาวรใน layout (aria-live) — เพิ่ม/แก้ ต้องได้ยินเหมือนกัน (wave18b)
+      announce(entryId ? 'บันทึกการแก้ไขแล้ว' : 'บันทึกรายการแล้ว');
       onDone();
       router.refresh();
       if (entryId) focusAfterSheet(entryId, false);
@@ -355,6 +362,10 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
     <>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-pill bg-border-strong" />
+        {/* หัวเรื่องของชีต — ซ่อนด้วยตาแต่ให้ dialog ใช้เป็นชื่อ (aria-labelledby) ไม่ต้องมี aria-label ซ้ำ */}
+        <h2 id="entry-sheet-title" className="sr-only">
+          {editing ? 'แก้ไขรายการ' : 'เพิ่มรายการ'}
+        </h2>
 
         {editing ? (
           // kind แก้ไม่ได้โดยตั้งใจ (เปลี่ยนแล้วรูปร่าง to_account/category ต้องรื้อ) → อ่านอย่างเดียว ไม่มีชิปเปลี่ยนทิศทาง
@@ -393,6 +404,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
 
         <AmountInput
           id="sheet-amount"
+          errorId={errorId('amount')}
           label="จำนวนเงิน (บาท)"
           value={amount}
           onChange={setAmount}
@@ -455,6 +467,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
 
         <TextField
           id="entry-note"
+          errorId={errorId('note')}
           label="โน้ต (ไม่บังคับ)"
           value={note}
           onChange={setNote}
@@ -475,6 +488,8 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
                 disabled={busy !== null}
+                aria-invalid={errorId('date') ? true : undefined}
+                aria-describedby={errorId('date')}
                 className="num ml-auto min-h-11 rounded-input border border-border-strong bg-surface px-3 text-right disabled:opacity-40"
               />
               <button
@@ -580,12 +595,15 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
           </p>
         ) : null}
         {error ? (
-          <p role="alert" className="mb-2 text-[13px] leading-[18px] text-warn">
+          <p id="entry-error" role="alert" className="mb-2 text-[13px] leading-[18px] text-warn">
             ⚠ {error}
           </p>
         ) : null}
         {blockReason && !loadError ? (
-          <p className="mb-2 text-[13px] leading-[18px] text-warn">⚠ {blockReason}</p>
+          // role=status: เหตุผลที่บันทึกไม่ได้ต้องถูกประกาศด้วย ไม่ใช่เห็นอย่างเดียว (ผู้ใช้ screen reader จะค้างหน้าปุ่มที่กดไม่ได้)
+          <p id="entry-block-reason" role="status" className="mb-2 text-[13px] leading-[18px] text-warn">
+            ⚠ {blockReason}
+          </p>
         ) : null}
 
         <div className="flex justify-end gap-2">
@@ -612,6 +630,7 @@ function EntryForm({ target, onDone }: { target: SheetTarget; onDone: () => void
                 type="button"
                 onClick={save}
                 disabled={!canSave}
+                aria-describedby={blockReason && !loadError ? 'entry-block-reason' : undefined}
                 className="min-h-14 flex-1 rounded-btn bg-balance font-bold text-on-accent disabled:opacity-40"
               >
                 {busy === 'save' ? 'กำลังบันทึก…' : editing ? 'บันทึกการแก้ไข' : 'บันทึก'}

@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { OptionChips, TextField, optionChipClass } from '@/components/FormControls';
 import { CATEGORY_KIND_LABELS, colorLabel, colorOptionsFor } from '@/components/settings-view';
 
+import { announce } from '@/components/announce-store';
+import { settingsErrorField } from '@/components/settings-view';
 import { archiveCategoryAction, saveCategoryAction, type ManageResult } from './actions';
 
 /** หมวด 1 แถวในหน้านี้ (usage = จำนวนรายการที่อ้างถึง ใช้ตัดสินใจตอนเลิกใช้) */
@@ -61,6 +63,7 @@ export function CategorySheet({ item, onOptimistic, onDone, onClose }: Props) {
     try {
       const result = await call();
       if (result.ok) {
+        announce(mode === 'save' ? 'บันทึกหมวดแล้ว' : 'เลิกใช้หมวดแล้ว'); // ทุกการเขียนต้องได้ยินผล (wave18b)
         onDone();
         return;
       }
@@ -90,7 +93,7 @@ export function CategorySheet({ item, onOptimistic, onDone, onClose }: Props) {
   return (
     <dialog
       ref={dialogRef}
-      aria-label={item ? `แก้หมวด ${item.name}` : 'เพิ่มหมวด'}
+      aria-labelledby="category-sheet-title"
       onClose={onClose}
       onClick={(event) => {
         if (event.target === dialogRef.current) dialogRef.current?.close();
@@ -98,10 +101,13 @@ export function CategorySheet({ item, onOptimistic, onDone, onClose }: Props) {
       className="mt-auto mb-0 w-full max-w-[430px] rounded-t-[20px] border-0 bg-surface p-4 pb-[calc(16px+env(safe-area-inset-bottom))] text-text shadow-[var(--shadow-sheet)] backdrop:bg-[rgb(2_6_23_/_0.45)] sm:mx-auto"
     >
       <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-pill bg-border-strong" />
-      <h2 className="text-xl font-semibold">{item ? 'แก้หมวด' : 'เพิ่มหมวด'}</h2>
+      <h2 id="category-sheet-title" className="text-xl font-semibold">
+        {item ? 'แก้หมวด' : 'เพิ่มหมวด'}
+      </h2>
 
       <TextField
         id="category-name"
+        errorId={error && settingsErrorField(error) === 'name' ? 'category-error' : undefined}
         label="ชื่อหมวด"
         value={name}
         onChange={setName}
@@ -160,7 +166,7 @@ export function CategorySheet({ item, onOptimistic, onDone, onClose }: Props) {
       </fieldset>
 
       {error ? (
-        <p role="alert" className="mt-2 text-[13px] leading-[18px] text-warn">
+        <p id="category-error" role="alert" className="mt-2 text-[13px] leading-[18px] text-warn">
           ⚠ {error}
         </p>
       ) : null}

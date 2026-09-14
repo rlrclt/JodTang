@@ -6,8 +6,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  bangkokDateFromValue,
+  bangkokDateAt,
   bangkokDateValue,
+  bangkokTimeValue,
+  entryErrorField,
+  occurredAtForEdit,
   bangkokTodayValue,
   bangkokYesterdayValue,
   type EntryOptions,
@@ -127,13 +130,34 @@ test('bangkokDateValue: อ่านวันที่ตามปฏิทิ�
   assert.equal(bangkokDateValue(new Date('2026-09-13T17:00:00Z')), '2026-09-14');
 });
 
-test('bangkokDateFromValue: ค่าไป-กลับได้ และปฏิเสธวันที่ที่ไม่มีจริง', () => {
-  const at = bangkokDateFromValue('2026-09-14');
+test('bangkokDateAt: ค่าไป-กลับได้ และปฏิเสธวันที่ที่ไม่มีจริง', () => {
+  const at = bangkokDateAt('2026-09-14');
   assert.ok(at);
   assert.equal(bangkokDateValue(at), '2026-09-14');
-  assert.equal(bangkokDateFromValue('2026-02-31'), null); // JS จะเลื่อนเป็น 3 มี.ค. ถ้าไม่กัน
-  assert.equal(bangkokDateFromValue('14/09/2026'), null);
-  assert.equal(bangkokDateFromValue(''), null);
+  assert.equal(bangkokDateAt('2026-02-31'), null); // JS จะเลื่อนเป็น 3 มี.ค. ถ้าไม่กัน
+  assert.equal(bangkokDateAt('14/09/2026'), null);
+  assert.equal(bangkokDateAt(''), null);
+  assert.equal(bangkokDateAt('2026-09-14', '25:00:00'), null);
+});
+
+test('bangkokTimeValue: เวลาไทยของจุดเวลา (ไม่ใช่เวลาของเครื่อง)', () => {
+  assert.equal(bangkokTimeValue(new Date('2026-09-14T01:30:45Z')), '08:30:45');
+  assert.equal(bangkokTimeValue(new Date('2026-09-13T17:00:00Z')), '00:00:00');
+});
+
+test('occurredAtForEdit: แก้แค่วันอื่น (ไม่แตะวันที่) → เวลาเดิมไม่ถูกแตะเลย', () => {
+  const original = new Date('2026-09-14T01:30:45Z'); // 08:30:45 ไทย
+  const same = occurredAtForEdit(original, '2026-09-14');
+  assert.strictEqual(same, original, 'วันเดิมต้องคืนจุดเวลาเดิมทั้งก้อน ไม่ใช่ 12:00');
+});
+
+test('occurredAtForEdit: เปลี่ยนวันจริง → ยกเวลาเดิมไปวันใหม่ (ไม่ใช่เที่ยงวัน)', () => {
+  const original = new Date('2026-09-14T01:30:45Z'); // 08:30:45 ไทย
+  const moved = occurredAtForEdit(original, '2026-08-20');
+  assert.ok(moved);
+  assert.equal(bangkokDateValue(moved), '2026-08-20');
+  assert.equal(bangkokTimeValue(moved), '08:30:45');
+  assert.equal(occurredAtForEdit(original, '2026-02-31'), null);
 });
 
 test('ปุ่มลัด วันนี้/เมื่อวาน: ใช้เวลาไทย และข้ามเดือนถูกต้อง', () => {
@@ -141,4 +165,27 @@ test('ปุ่มลัด วันนี้/เมื่อวาน: ใช�
   assert.equal(bangkokTodayValue(morning), '2026-10-01');
   assert.equal(bangkokYesterdayValue(morning), '2026-09-30'); // ข้ามเดือน
   assert.equal(bangkokYesterdayValue(new Date('2026-09-14T06:00:00Z')), '2026-09-13'); // 13:00 ไทย
+});
+
+test('occurredAtForEdit: แก้แค่วันที่ไทยเดียวกันแต่ยังเป็นวันเดียวกันใน UTC → ยังคงเวลาเดิม', () => {
+  // 2026-09-14T18:00Z = 01:00 วันที่ 15 ตามเวลาไทย → วันที่ไทยคือ 15
+  const lateNight = new Date('2026-09-14T18:00:00Z');
+  assert.equal(bangkokDateValue(lateNight), '2026-09-15');
+  assert.strictEqual(occurredAtForEdit(lateNight, '2026-09-15'), lateNight);
+  const moved = occurredAtForEdit(lateNight, '2026-09-16');
+  assert.ok(moved);
+  assert.equal(bangkokTimeValue(moved), '01:00:00');
+});
+
+test('entryErrorField: map ข้อความ error ไทย → ช่องที่ผิด (ใช้คุม aria-invalid รายช่อง)', () => {
+  assert.equal(entryErrorField('โน้ตยาวเกิน 500 ตัวอักษร'), 'note');
+  assert.equal(entryErrorField('จำนวนเงินต้องมากกว่า 0'), 'amount');
+  assert.equal(entryErrorField('วันที่ไม่ถูกต้อง'), 'date');
+  assert.equal(entryErrorField('รับ/จ่ายต้องระบุหมวด'), 'category');
+  assert.equal(entryErrorField('โอนต้องระบุกระเป๋าปลายทาง'), 'toAccount'); // 'ปลายทาง' ต้องมาก่อน 'กระเป๋า'
+  assert.equal(entryErrorField('ต้องมีกระเป๋าอย่างน้อย 1 ใบ'), 'account');
+  // ไม่รู้จัก/ไม่ใช่ความผิดของช่องไหน → null (ห้ามประทับช่องผิด)
+  assert.equal(entryErrorField('ไม่พบรายการนี้ (อาจถูกลบไปแล้วหรือไม่ใช่ของคุณ)'), null);
+  assert.equal(entryErrorField('เซสชันหมดอายุ — เข้าสู่ระบบใหม่แล้วลองอีกครั้ง'), null);
+  assert.equal(entryErrorField('บันทึกการแก้ไขไม่สำเร็จ ลองใหม่ (เน็ตมีปัญหา)'), null);
 });

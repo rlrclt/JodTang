@@ -104,6 +104,24 @@ export function canTransferWith(accountCount: number): boolean {
 }
 
 /**
+ * ช่องของชีตเพิ่ม/แก้รายการที่ข้อความ error ชี้ถึง (wave18c)
+ * ใช้ทำเครื่องหมาย `aria-invalid` เฉพาะช่องที่ผิดจริง — ไม่ประทับทั้งชีต
+ * แมปจากคำในข้อความ ValidationError ของชั้นข้อมูล (ข้อความไทยคงที่ตาม mutations) · ไม่รู้จัก = null (ไม่ทำเครื่องหมายผิด)
+ */
+export type EntryErrorField = 'amount' | 'account' | 'toAccount' | 'category' | 'note' | 'date';
+
+export function entryErrorField(message: string): EntryErrorField | null {
+  // 'ปลายทาง' มาก่อน 'กระเป๋า' เพราะ 'โอนต้องระบุกระเป๋าปลายทาง' ชี้ที่ช่องปลายทาง ไม่ใช่ช่องต้นทาง
+  if (message.includes('ปลายทาง')) return 'toAccount';
+  if (message.includes('โน้ต')) return 'note';
+  if (message.includes('วันที่')) return 'date';
+  if (message.includes('จำนวนเงิน')) return 'amount';
+  if (message.includes('หมวด')) return 'category';
+  if (message.includes('กระเป๋า')) return 'account';
+  return null;
+}
+
+/**
  * วันที่ของชีต (wave17) — ค่าที่ <input type="date"> ใช้: 'YYYY-MM-DD' ตาม **ปฏิทินไทย**
  * ที่นี่คือที่เดียวที่แปลง Date ⇄ วันที่ไทยของชีต (เหตุผลเดียวกับ src/lib/month.ts: เครื่องรันไม่ใช่ไทย)
  */
@@ -123,16 +141,46 @@ export function bangkokDateValue(at: Date): DateInputValue {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+const BKK_TIME = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Bangkok',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** เวลาไทยของ Date หนึ่ง ๆ เป็น 'HH:MM:SS' — ใช้ตอนยกเวลาเดิมไปวันใหม่ (wave18) */
+export function bangkokTimeValue(at: Date): string {
+  const parts = BKK_TIME.formatToParts(at);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('hour')}:${get('minute')}:${get('second')}`;
+}
+
 /**
- * 'YYYY-MM-DD' → Date ที่ **เที่ยงวันไทย** (+07:00)
- * เที่ยงวันเพื่อไม่ให้เวลา/โซนของเครื่องเลื่อนวันที่ไปข้างหน้าหรือย้อนหลัง (ไทยไม่มี DST จึง +07 คงที่)
+ * 'YYYY-MM-DD' + เวลาไทย 'HH:MM:SS' → Date (+07:00 คงที่ — ไทยไม่มี DST)
  * คืน null เมื่อรูปไม่ถูกหรือวันที่ไม่มีจริง (เช่น 2026-02-31 ซึ่ง JS จะเลื่อนเป็น 3 มี.ค. เงียบ ๆ)
+ * ค่าเริ่มต้นเที่ยงวัน = กันเวลา/โซนของเครื่องเลื่อนวันไปข้างหน้าหรือย้อนหลัง
  */
-export function bangkokDateFromValue(value: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const at = new Date(`${value}T12:00:00+07:00`);
+export function bangkokDateAt(value: string, time: string = '12:00:00'): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !/^\d{2}:\d{2}:\d{2}$/.test(time)) return null;
+  const at = new Date(`${value}T${time}+07:00`);
   if (Number.isNaN(at.getTime())) return null;
   return bangkokDateValue(at) === value ? at : null;
+}
+
+/**
+ * เวลาที่จะบันทึกตอน "แก้รายการ" (wave18) — ผู้ใช้แก้แค่วันที่ ไม่ได้แก้เวลา
+ * กติกา:
+ *   1. วันที่ใหม่ = วันเดิมของรายการ → คืน **จุดเวลาเดิมทั้งชุด** (ไม่แตะเลย ชั่วโมง/นาที/วินาที/โซน)
+ *      ⇒ แก้แค่จำนวน/หมวด/โน้ต ไม่ทำให้เวลากลายเป็น 12:00 และลำดับในวันเดียวกันไม่สลับ
+ *   2. ผู้ใช้เปลี่ยนวันจริง (ข้ามวัน/ข้ามเดือน) → ยก **เวลาเดิมของรายการ** ไปวันใหม่
+ *      (ไม่ใช้ 12:00 เพื่อให้ตำแหน่งของรายการในวันนั้นยังสมเหตุสมผล)
+ * คืน null เมื่อวันที่ใหม่ผิดรูป (ผู้เรียกต้องไม่บันทึกทับ)
+ */
+export function occurredAtForEdit(original: Date, dateValue: string): Date | null {
+  if (bangkokDateValue(original) === dateValue) return original;
+  const time = bangkokTimeValue(original);
+  return bangkokDateAt(dateValue, time);
 }
 
 /** ปุ่มลัด "วันนี้" ตามเวลาไทย (design.md §2) */

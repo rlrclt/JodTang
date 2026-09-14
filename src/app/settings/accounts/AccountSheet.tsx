@@ -6,6 +6,8 @@ import { AmountInput, AmountKeys, inputFromSatang, satangFromInput } from '@/com
 import { OptionChips, TextField } from '@/components/FormControls';
 import { ACCOUNT_KIND_OPTIONS } from '@/components/settings-view';
 
+import { announce } from '@/components/announce-store';
+import { settingsErrorField } from '@/components/settings-view';
 import { archiveAccountAction, saveAccountAction, type ManageResult } from './actions';
 
 /** กระเป๋า 1 แถวในหน้านี้ (usage = จำนวนรายการที่อ้างถึง — รวมที่เป็นกระเป๋าปลายทางของโอน) */
@@ -69,6 +71,7 @@ export function AccountSheet({ item, canArchive, onOptimistic, onDone, onClose }
     try {
       const result = await call();
       if (result.ok) {
+        announce(mode === 'save' ? 'บันทึกกระเป๋าแล้ว' : 'เลิกใช้กระเป๋าแล้ว'); // ทุกการเขียนต้องได้ยินผล (wave18b)
         onDone();
         return;
       }
@@ -108,7 +111,7 @@ export function AccountSheet({ item, canArchive, onOptimistic, onDone, onClose }
   return (
     <dialog
       ref={dialogRef}
-      aria-label={item ? `แก้กระเป๋า ${item.name}` : 'เพิ่มกระเป๋า'}
+      aria-labelledby="account-sheet-title"
       onClose={onClose}
       onClick={(event) => {
         if (event.target === dialogRef.current) dialogRef.current?.close();
@@ -116,10 +119,13 @@ export function AccountSheet({ item, canArchive, onOptimistic, onDone, onClose }
       className="mt-auto mb-0 w-full max-w-[430px] rounded-t-[20px] border-0 bg-surface p-4 pb-[calc(16px+env(safe-area-inset-bottom))] text-text shadow-[var(--shadow-sheet)] backdrop:bg-[rgb(2_6_23_/_0.45)] sm:mx-auto"
     >
       <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-pill bg-border-strong" />
-      <h2 className="text-xl font-semibold">{item ? 'แก้กระเป๋า' : 'เพิ่มกระเป๋า'}</h2>
+      <h2 id="account-sheet-title" className="text-xl font-semibold">
+        {item ? 'แก้กระเป๋า' : 'เพิ่มกระเป๋า'}
+      </h2>
 
       <TextField
         id="account-name"
+        errorId={error && settingsErrorField(error) === 'name' ? 'account-error' : undefined}
         label="ชื่อกระเป๋า"
         value={name}
         onChange={setName}
@@ -150,6 +156,7 @@ export function AccountSheet({ item, canArchive, onOptimistic, onDone, onClose }
       </div>
       <AmountInput
         id="account-balance"
+        errorId={error && settingsErrorField(error) === 'balance' ? 'account-error' : undefined}
         label=""
         value={initialBalance}
         onChange={setInitialBalance}
@@ -161,7 +168,7 @@ export function AccountSheet({ item, canArchive, onOptimistic, onDone, onClose }
       <AmountKeys value={initialBalance} onChange={setInitialBalance} disabled={busy !== null} />
 
       {error ? (
-        <p role="alert" className="mt-2 text-[13px] leading-[18px] text-warn">
+        <p id="account-error" role="alert" className="mt-2 text-[13px] leading-[18px] text-warn">
           ⚠ {error}
         </p>
       ) : null}

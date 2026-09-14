@@ -7,7 +7,7 @@ import {
   type EntryKind,
   type EntryOptions,
   SETUP_CATEGORIES,
-  bangkokDateFromValue,
+  occurredAtForEdit,
 } from '@/components/entry-view';
 import { getDb } from '@/db';
 import { ValidationError } from '@/db/errors';
@@ -280,7 +280,11 @@ export async function updateEntryAction(input: {
     const session = await getSession();
     if (!session) return { ok: false, message: SIGNED_OUT };
 
-    const occurredAt = bangkokDateFromValue(input.occurredAt);
+    // อ่านของเดิมก่อน 1 query เพื่อรู้ "เวลาที่ผู้ใช้ไม่ได้แก้" — วันที่เปลี่ยนไม่ได้แปลว่าเวลาต้องเปลี่ยน (wave18)
+    const current = await loadEntryForEdit(getDb(), session.userId, input.id);
+    if (!current) return { ok: false, message: 'ไม่พบรายการนี้ (อาจถูกลบไปแล้ว)' };
+
+    const occurredAt = occurredAtForEdit(current.occurredAt, input.occurredAt);
     if (!occurredAt) return { ok: false, message: 'วันที่ไม่ถูกต้อง' };
 
     const isTransfer = input.kind === 'transfer';

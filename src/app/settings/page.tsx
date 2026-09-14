@@ -74,12 +74,8 @@ export default async function SettingsPage() {
             </span>
           </Link>
         </li>
-        <li className="px-4">
-          <div className="flex min-h-14 items-center justify-between gap-3">
-            <span>ธีม</span>
-            <span className="text-[13px] text-text-muted">เร็ว ๆ นี้</span>
-          </div>
-        </li>
+        {/* ธีม: ไม่มีแถว "เร็ว ๆ นี้" ค้างในลิสต์ (wave18 sweep) — แอปยังไม่มีตัวสลับธีมใน UI
+            ตัวจริงตามระบบทำงานอยู่ (THEME_SCRIPT ใน layout) และบอกความจริงไว้ท้ายหน้าแทนปุ่มที่กดไม่ได้ */}
       </ul>
       <section className="rounded-card border border-border bg-surface p-4">
         <h2 className="mb-2 font-semibold">ติดตั้งแอป</h2>
@@ -87,7 +83,7 @@ export default async function SettingsPage() {
       </section>
 
       <p className="text-[13px] leading-[18px] text-text-muted">
-        เดือนปัจจุบัน: {formatMonthLabelTh(periodMonthOfBkk())} · ธีมตามระบบอยู่แล้ว (สลับเองได้ในหน้านี้ตอนต่อ DB)
+        เดือนปัจจุบัน: {formatMonthLabelTh(periodMonthOfBkk())} · ธีมตามระบบของอุปกรณ์ (ตัวสลับเองในแอปยังไม่ทำในเวอร์ชันนี้)
       </p>
     </div>
   );
