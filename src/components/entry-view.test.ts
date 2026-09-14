@@ -6,6 +6,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  bangkokDateFromValue,
+  bangkokDateValue,
+  bangkokTodayValue,
+  bangkokYesterdayValue,
   type EntryOptions,
   SETUP_CATEGORIES,
   SUGGESTED_CATEGORY_NAMES,
@@ -113,4 +117,28 @@ test('แผนเริ่มใช้งานเร็ว: หมวดรา
 test('แผนเริ่มใช้งานเร็ว: รายรับใช้เฉดเขียวได้ (ตามสเปก wave12 §2)', () => {
   const income = SETUP_CATEGORIES.filter((item) => item.kind === 'income').map((item) => item.color);
   assert.deepEqual(income, ['--chart-4', '--chart-7']);
+});
+
+// --- วันที่ไทยของชีตแก้รายการ (wave17) ---
+// เส้นแบ่งวันที่คือหัวใจ: 18:00Z ของวันที่ 13 = 01:00 น. วันที่ 14 ตามเวลาไทย → ต้องได้ 2026-09-14
+test('bangkokDateValue: อ่านวันที่ตามปฏิทินไทย ไม่ใช่วันที่ของเครื่อง', () => {
+  assert.equal(bangkokDateValue(new Date('2026-09-13T18:00:00Z')), '2026-09-14');
+  assert.equal(bangkokDateValue(new Date('2026-09-13T16:59:00Z')), '2026-09-13');
+  assert.equal(bangkokDateValue(new Date('2026-09-13T17:00:00Z')), '2026-09-14');
+});
+
+test('bangkokDateFromValue: ค่าไป-กลับได้ และปฏิเสธวันที่ที่ไม่มีจริง', () => {
+  const at = bangkokDateFromValue('2026-09-14');
+  assert.ok(at);
+  assert.equal(bangkokDateValue(at), '2026-09-14');
+  assert.equal(bangkokDateFromValue('2026-02-31'), null); // JS จะเลื่อนเป็น 3 มี.ค. ถ้าไม่กัน
+  assert.equal(bangkokDateFromValue('14/09/2026'), null);
+  assert.equal(bangkokDateFromValue(''), null);
+});
+
+test('ปุ่มลัด วันนี้/เมื่อวาน: ใช้เวลาไทย และข้ามเดือนถูกต้อง', () => {
+  const morning = new Date('2026-10-01T01:00:00+07:00');
+  assert.equal(bangkokTodayValue(morning), '2026-10-01');
+  assert.equal(bangkokYesterdayValue(morning), '2026-09-30'); // ข้ามเดือน
+  assert.equal(bangkokYesterdayValue(new Date('2026-09-14T06:00:00Z')), '2026-09-13'); // 13:00 ไทย
 });

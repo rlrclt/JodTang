@@ -102,3 +102,45 @@ export function entryBlockReason(draft: EntryDraft): string | null {
 export function canTransferWith(accountCount: number): boolean {
   return accountCount >= 2;
 }
+
+/**
+ * วันที่ของชีต (wave17) — ค่าที่ <input type="date"> ใช้: 'YYYY-MM-DD' ตาม **ปฏิทินไทย**
+ * ที่นี่คือที่เดียวที่แปลง Date ⇄ วันที่ไทยของชีต (เหตุผลเดียวกับ src/lib/month.ts: เครื่องรันไม่ใช่ไทย)
+ */
+export type DateInputValue = string;
+
+const BKK_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Bangkok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** วันที่ไทย (YYYY-MM-DD) ของเวลาใด ๆ — ใช้ formatToParts ไม่พึ่ง locale ว่าเรียงปี-เดือน-วัน */
+export function bangkokDateValue(at: Date): DateInputValue {
+  const parts = BKK_DATE.formatToParts(at);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/**
+ * 'YYYY-MM-DD' → Date ที่ **เที่ยงวันไทย** (+07:00)
+ * เที่ยงวันเพื่อไม่ให้เวลา/โซนของเครื่องเลื่อนวันที่ไปข้างหน้าหรือย้อนหลัง (ไทยไม่มี DST จึง +07 คงที่)
+ * คืน null เมื่อรูปไม่ถูกหรือวันที่ไม่มีจริง (เช่น 2026-02-31 ซึ่ง JS จะเลื่อนเป็น 3 มี.ค. เงียบ ๆ)
+ */
+export function bangkokDateFromValue(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const at = new Date(`${value}T12:00:00+07:00`);
+  if (Number.isNaN(at.getTime())) return null;
+  return bangkokDateValue(at) === value ? at : null;
+}
+
+/** ปุ่มลัด "วันนี้" ตามเวลาไทย (design.md §2) */
+export function bangkokTodayValue(now: Date = new Date()): DateInputValue {
+  return bangkokDateValue(now);
+}
+
+/** ปุ่มลัด "เมื่อวาน" — ลบ 24 ชม.จาก "ตอนนี้" แล้วอ่านวันที่ไทย (ข้ามเดือน/ข้ามวันถูกต้อง) */
+export function bangkokYesterdayValue(now: Date = new Date()): DateInputValue {
+  return bangkokDateValue(new Date(now.getTime() - 86_400_000));
+}

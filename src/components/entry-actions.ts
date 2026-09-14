@@ -2,13 +2,20 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { type EntryCategory, type EntryKind, type EntryOptions, SETUP_CATEGORIES } from '@/components/entry-view';
+import {
+  type EntryCategory,
+  type EntryKind,
+  type EntryOptions,
+  SETUP_CATEGORIES,
+  bangkokDateFromValue,
+} from '@/components/entry-view';
 import { getDb } from '@/db';
 import { ValidationError } from '@/db/errors';
 import { addAccount } from '@/db/mutations/accounts';
 import { addCategory } from '@/db/mutations/categories';
-import { addTransaction } from '@/db/mutations/transactions';
+import { addTransaction, softDeleteTransaction, updateTransaction } from '@/db/mutations/transactions';
 import { lastUsedAccountId, listAccounts } from '@/db/queries/accounts';
+import { loadEntryForEdit } from '@/db/queries/transactions';
 import { firstRunState } from '@/db/queries/user-state';
 import { listCategories, suggestedCategoryId, type CategoryRow } from '@/db/queries/categories';
 import { isNextControlFlow } from '@/lib/next-signals';
@@ -204,5 +211,117 @@ export async function setupDefaultsAction(): Promise<SetupResult> {
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
     return { ok: false, message: userMessage(error, 'สร้างค่าเริ่มต้นไม่สำเร็จ ลองใหม่', 'มีข้อมูลนี้อยู่แล้ว') };
+  }
+}
+
+/** รายการที่จะแก้ — ส่ง `occurredAt` เป็น ISO string; ฝั่ง UI แปลงเป็นวันที่ไทยเอง (ชั้นข้อมูลไม่จัดรูปแบบให้) */
+export type EditableEntry = {
+  id: string;
+  kind: EntryKind;
+  amount: number;
+  accountId: string;
+  toAccountId: string | null;
+  categoryId: string | null;
+  note: string | null;
+  occurredAt: string;
+};
+
+export type EntryLoadResult = { ok: true; entry: EditableEntry } | { ok: false; message: string };
+
+/**
+ * โหลดรายการที่จะแก้ (wave17) — **1 query** และไม่ยัดค่าลง HTML ก่อน (spec §2)
+ * ไม่พบ / ไม่ใช่ของผู้ใช้คนนี้ / ถูกลบไปแล้ว = null จากชั้นข้อมูล → คืนข้อความไทย (ไม่ใช่ 500)
+ */
+export async function loadEntryForEditAction(id: string): Promise<EntryLoadResult> {
+  try {
+    const session = await getSession();
+    if (!session) return { ok: false, message: SIGNED_OUT };
+
+    const row = await loadEntryForEdit(getDb(), session.userId, id);
+    if (!row) return { ok: false, message: 'ไม่พบรายการนี้ (อาจถูกลบไปแล้ว)' };
+
+    return {
+      ok: true,
+      entry: {
+        id: row.id,
+        kind: row.kind,
+        amount: row.amount,
+        accountId: row.accountId,
+        // TxnRow ประกาศฟิลด์พวกนี้เป็น optional (บาง query ไม่ได้ select มา) — ที่นี่ select มาจริง จึงเป็น null ไม่ใช่ undefined
+        toAccountId: row.toAccountId ?? null,
+        categoryId: row.categoryId ?? null,
+        note: row.note ?? null,
+        occurredAt: row.occurredAt.toISOString(),
+      },
+    };
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    console.error('[jodjai] เปิดรายการเพื่อแก้ไม่สำเร็จ:', error);
+    return { ok: false, message: 'เปิดรายการนี้ไม่สำเร็จ ลองใหม่' };
+  }
+}
+
+/**
+ * แก้รายการ — `kind` จาก client ใช้แค่ตัดสินว่า "ส่งฟิลด์ไหน" (โอน = toAccountId ไม่มีหมวด · อื่น ๆ = ตรงข้าม)
+ * เพดานจริงอยู่ที่ mutation: มันอ่าน kind ของแถวเดิมเองและโยน ValidationError ถ้าส่ง `kind` มาใน patch
+ * ⇒ แก้ทิศทางเงินผ่านทางนี้ไม่ได้ (ต้องลบแล้วสร้างใหม่) และรูปร่างที่ผิดกติกาจบที่ข้อความไทย ไม่ใช่ 500
+ */
+export async function updateEntryAction(input: {
+  id: string;
+  kind: EntryKind;
+  amount: number;
+  accountId: string;
+  toAccountId: string | null;
+  categoryId: string | null;
+  note: string | null;
+  occurredAt: string;
+}): Promise<EntryWriteResult> {
+  try {
+    const session = await getSession();
+    if (!session) return { ok: false, message: SIGNED_OUT };
+
+    const occurredAt = bangkokDateFromValue(input.occurredAt);
+    if (!occurredAt) return { ok: false, message: 'วันที่ไม่ถูกต้อง' };
+
+    const isTransfer = input.kind === 'transfer';
+    await updateTransaction(getDb(), session, input.id, {
+      amount: input.amount,
+      accountId: input.accountId,
+      toAccountId: isTransfer ? input.toAccountId : null,
+      categoryId: isTransfer ? null : input.categoryId,
+      note: input.note && input.note.trim() !== '' ? input.note.trim() : null,
+      occurredAt,
+    });
+
+    revalidatePath('/');
+    revalidatePath('/transactions');
+    revalidatePath('/summary'); // ยอดตามหมวด/เทียบงบต้องตรงกันทั้งชุด
+    revalidatePath('/settings/accounts'); // แก้กระเป๋า/จำนวน = ยอดคงเหลือต่อใบเปลี่ยน
+    return { ok: true };
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    return { ok: false, message: userMessage(error, 'บันทึกการแก้ไขไม่สำเร็จ ลองใหม่', 'มีรายการซ้ำอยู่แล้ว') };
+  }
+}
+
+/**
+ * ลบรายการ = soft delete (ชั้นข้อมูลตั้ง `deletedAt`) — แถวยังอยู่ใน DB เป็นประวัติ กู้คืนจากในแอปไม่ได้
+ * แถวหาย/ถูกลบไปก่อนแล้ว → ValidationError ข้อความไทย → คืน {ok:false,message} (ไม่ใช่ 500)
+ */
+export async function deleteEntryAction(id: string): Promise<EntryWriteResult> {
+  try {
+    const session = await getSession();
+    if (!session) return { ok: false, message: SIGNED_OUT };
+
+    await softDeleteTransaction(getDb(), session, id);
+
+    revalidatePath('/');
+    revalidatePath('/transactions');
+    revalidatePath('/summary');
+    revalidatePath('/settings/accounts');
+    return { ok: true };
+  } catch (error) {
+    if (isNextControlFlow(error)) throw error;
+    return { ok: false, message: userMessage(error, 'ลบรายการไม่สำเร็จ ลองใหม่', 'รายการนี้ถูกลบไปแล้ว') };
   }
 }

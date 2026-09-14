@@ -40,7 +40,14 @@ export function TransactionRow({ view }: { view: TransactionRowView }) {
 
   return (
     <li className="border-b border-border last:border-b-0">
-      <button type="button" className="flex min-h-14 w-full items-center gap-3 px-2 text-left">
+      {/* ทั้งแถวเป็นการกระทำเดียว: แตะ = เปิดชีตโหมดแก้ ( listener อยู่ที่ AddEntryFab — ใช้ได้ทั้งหน้าแรกและ /transactions) */}
+      <button
+        type="button"
+        data-open-edit={view.id}
+        aria-haspopup="dialog"
+        aria-label={`แก้รายการ ${view.categoryName ?? KIND_LABEL[view.kind]} ${formatRowAmount(view)}`}
+        className="flex min-h-14 w-full items-center gap-3 px-2 text-left"
+      >
         <span
           aria-hidden="true"
           className="size-2.5 shrink-0 rounded-pill"
