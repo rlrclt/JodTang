@@ -15,6 +15,8 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 
+import { addAccount } from './accounts.ts';
+import { addCategory } from './categories.ts';
 import { monthTotals } from '../queries/transactions.ts';
 import type { Db } from '../index.ts';
 import * as schema from '../schema.ts';
@@ -381,5 +383,23 @@ test('(C) patch occurredAt: null/\'\' = คงค่าเดิม (คนล�
   assert.ok(
     Math.abs(Date.now() - (fresh.occurredAt?.getTime() ?? 0)) < 120_000,
     'add ที่ไม่ส่ง occurredAt ต้องได้เวลาปัจจุบันจาก DB',
+  );
+});
+
+test('โน้ตยาวเกิน 500 ตัวอักษรถูกปฏิเสธ (ไม่ตัดข้อมูลผู้ใช้เงียบ ๆ) — audit F4', async () => {
+  const account = await addAccount(db, SESSION_1, { name: 'กระเป๋าสำหรับเทสต์โน้ต', kind: 'cash' });
+  const category = await addCategory(db, SESSION_1, { kind: 'expense', name: 'หมวดสำหรับเทสต์โน้ต' });
+  const base = { kind: 'expense' as const, amount: 1000, accountId: account.id, categoryId: category.id };
+
+  const okLength = await addTransaction(db, SESSION_1, { ...base, note: 'ก'.repeat(500) });
+  // อ่านความยาวจริงจาก DB (TxnRow ไม่ได้ select note มา — ต้องยืนยันว่าของที่เก็บได้ 500 ตัวจริง)
+  const stored = await pglite.query<{ len: number }>(
+    `select length(note)::int as len from transactions where id = '${okLength.id}'`,
+  );
+  assert.equal(stored.rows[0].len, 500, '500 ตัวอักษรต้องผ่านและถูกเก็บครบ (ขอบบนพอดี)');
+
+  await assert.rejects(
+    () => addTransaction(db, SESSION_1, { ...base, note: 'ก'.repeat(501) }),
+    (error: unknown) => error instanceof ValidationError && /โน้ตยาวเกิน 500/.test(error.message),
   );
 });

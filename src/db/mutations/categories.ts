@@ -29,6 +29,8 @@ import type { Session } from '../session.ts';
 
 /** ฟิลด์ที่ยอมรับจาก input — ที่เหลือ (userId, id, archivedAt, kind ตอนแก้) ระบบกำหนดเอง = ปฏิเสธ */
 const ALLOWED_KEYS: readonly string[] = ['kind', 'name', 'icon', 'color', 'sortOrder'];
+/** เพดานความยาวชื่อ (audit F4) — กัน payload ยาวผิดปกติ · ชื่อหมวดจริงสั้นกว่านี้มาก */
+const MAX_NAME_LENGTH = 100;
 
 export type ValidCategory = {
   kind: CategoryKind;
@@ -71,6 +73,8 @@ export function validateCategory(input: unknown): ValidCategory {
   // เก็บชื่อแบบตัดช่องว่างหัวท้าย (DB บังคับ btrim(name) <> '' และ unique คิดแบบ lower(btrim(name)))
   const name = requiredText(raw.name, 'ชื่อหมวด').trim();
   if (name === '') throw new ValidationError('ต้องระบุชื่อหมวด');
+  // เพดานความยาว (audit F4): ชื่อที่ผู้ใช้ตั้ง = ข้อมูลของเขา → โยน ValidationError ไม่ตัดทิ้งเงียบ ๆ
+  if (name.length > MAX_NAME_LENGTH) throw new ValidationError(`ชื่อหมวดยาวเกิน ${MAX_NAME_LENGTH} ตัวอักษร`);
 
   let sortOrder = 0;
   if (raw.sortOrder != null) {

@@ -116,7 +116,7 @@ export type TransactionFilters = {
   kind?: TxnKind;
   /** กระเป๋า — ตรงฝั่งต้นทาง (account_id) หรือปลายทางของโอน (to_account_id) */
   accountId?: string;
-  /** ค้นข้อความใน note **และชื่อหมวด** ของผู้ใช้คนนี้ (ดูหมายเหตุใน listTransactionPage) */
+  /** ค้นข้อความใน note **และชื่อหมวด** ของผู้ใช้คนนี้ (ดูหมายเหตุใน listTransactionPage) — ตัดที่ 200 ตัวอักษร */
   q?: string;
   /** หน้าถัดไป: ส่ง nextCursor ของหน้าก่อนกลับมา (keyset — ไม่ใช้ OFFSET) */
   cursor?: KeysetCursor;
@@ -135,6 +135,13 @@ export type TransactionPage = {
 /** เพดานต่อหน้า — กัน UI ขอ 10000 แล้วลากทั้งตาราง */
 const MAX_PAGE_LIMIT = 100;
 const DEFAULT_PAGE_LIMIT = 50;
+/**
+ * เพดานความยาวคำค้น (audit F4) — ชั้นข้อมูล "ตัดที่ขอบ" เพราะเป็นคำค้นชั่วคราว ไม่ใช่ข้อมูลที่บันทึก
+ * UI cap ที่ input ด้วย `SEARCH_MAX_LENGTH` ของตัวเอง (src/components/transactions-view.ts — client component
+ * ห้าม import ค่าจากโมดูล DB) และมีเทสต์ล็อกให้สองฝั่งเท่ากัน (src/components/transactions-view.test.ts)
+ * ค่าที่ export นี้จึงเป็นฝั่ง "ตาข่ายกันพลาด" ของชั้นข้อมูล ไม่ใช่ค่าที่ UI อ่านตรง ๆ
+ */
+export const MAX_SEARCH_LENGTH = 200;
 
 /** count(*) ของ PG กลับมาเป็น int8 (ไดรเวอร์อาจส่งเป็นสตริง) → number · จำนวนแถวไม่มีทางเกิน 2^53 ในทางปฏิบัติ */
 const rowCount = (value: unknown): number => (typeof value === 'number' ? value : Number(value ?? 0));
@@ -156,7 +163,13 @@ function filterConditions(db: Db, userId: string, filters: TransactionFilters): 
     // ค้นทั้ง "โน้ต" และ "ชื่อหมวด" (design.md §4 S4 + spec §2: คนไทยพิมพ์ชื่อหมวดบ่อยกว่าเขียนโน้ต)
     // ใช้ subquery แทนการยิงหา categoryId ก่อน = ยังเป็น 1 query ต่อหน้า และเลี่ยงกับดัก inArray([])
     // (ไม่มีหมวดที่ชื่อตรง → subquery ว่าง → เทอมนี้เป็น false แล้ว OR จึงเหลือแค่เงื่อนไขโน้ต ไม่ใช่ได้ 0 แถวเสมอ)
-    const pattern = `%${escapeLike(filters.q)}%`;
+    // เพดาน 200 ตัวอักษร (audit F4): คำค้นยาวเกินนี้ไม่มีประโยชน์และทำให้ LIKE แพง — ชั้นข้อมูล "ตัดที่ขอบ" (ไม่โยน error)
+    // เพราะเป็นคำค้นชั่วคราว ไม่ใช่ข้อมูลที่ผู้ใช้บันทึก (ถ้า error หน้าที่ผู้ใช้พิมพ์ยาวจะพังทั้งหน้า)
+    // ฝั่ง UI: ช่องค้นหา cap ที่ 200 ด้วย `maxLength={SEARCH_MAX_LENGTH}` (src/components/TransactionFilters.tsx:82)
+    // ค่าของ UI ประกาศที่ src/components/transactions-view.ts:16 (client component ห้าม import จากโมดูล DB)
+    // มีเทสต์ล็อกสองฝั่งเท่ากันที่ src/components/transactions-view.test.ts:88 → จึงไม่ต้อง hardcode ซ้ำ
+    // ชั้นข้อมูลยัง slice ไว้เป็นตาข่ายกันพลาด (ผู้เรียกที่ไม่ใช่ UI/คำขอที่ถูกแก้มาก็ยังปลอดภัย)
+    const pattern = `%${escapeLike(filters.q.slice(0, MAX_SEARCH_LENGTH))}%`;
     const matchedCategories = db
       .select({ id: categories.id })
       .from(categories)

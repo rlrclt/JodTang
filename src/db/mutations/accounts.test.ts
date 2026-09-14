@@ -352,3 +352,13 @@ test('ห้าม archive กระเป๋าใบสุดท้ายท�
   );
   assert.equal((await listAccounts(db, solo.userId, { includeArchived: true })).length, 2);
 });
+
+test('ชื่อกระเป๋ายาวเกิน 100 ตัวอักษรถูกปฏิเสธ (audit F4)', async () => {
+  const ok = await addAccount(db, SESSION_1, { name: 'ก'.repeat(100), kind: 'cash' });
+  assert.equal(ok.name.length, 100, '100 ตัวอักษรต้องผ่าน (ขอบบนพอดี)');
+
+  await assert.rejects(
+    () => addAccount(db, SESSION_1, { name: 'ก'.repeat(101), kind: 'cash' }),
+    (error: unknown) => error instanceof ValidationError && /ชื่อกระเป๋ายาวเกิน 100/.test(error.message),
+  );
+});

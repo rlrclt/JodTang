@@ -318,3 +318,17 @@ test('limit ถูก clamp ให้อยู่ในช่วงที่ป�
   const second = await listTransactionPage(db, U1, { limit: 1, cursor: first.nextCursor });
   assert.notEqual(second.rows[0].id, first.rows[0].id);
 });
+
+test('คำค้นยาวเกิน 200 ตัวอักษรถูกตัดที่ขอบ (ไม่ error) — audit F4', async () => {
+  // note = 'B' × 200 พอดี: คำค้น 'B'×200 + 'C' (201 ตัว) ถ้าไม่ตัดจะไม่ match (โน้ตไม่มี C)
+  await pglite.exec(`
+    insert into transactions (user_id, kind, account_id, category_id, amount, occurred_at, note)
+      values ('${U1}', 'expense', '${A1}', '${C_FOOD}', 4242, timestamptz '2026-07-01 10:00+07', '${'B'.repeat(200)}');
+  `);
+
+  const long = await listTransactionPage(db, U1, { q: `${'B'.repeat(200)}C`, limit: 100 });
+  assert.deepEqual(long.rows.map((row) => row.amount), [4242], 'คำค้นถูกตัดเหลือ 200 ตัว → ยัง match โน้ตได้');
+
+  const exact = await listTransactionPage(db, U1, { q: 'B'.repeat(200), limit: 100 });
+  assert.deepEqual(exact.rows.map((row) => row.amount), [4242], 'คำค้นที่พอดี 200 ตัวก็ยังทำงาน');
+});

@@ -24,6 +24,8 @@ import type { Session } from '../session.ts';
 
 /** สตางค์เพดานเดียวกับ DB (accounts_initial_balance_check: > -1e15 และ < 1e15) */
 const MAX_BALANCE = 1_000_000_000_000_000;
+/** เพดานความยาวชื่อ (audit F4) — กัน payload ยาวผิดปกติ · ชื่อกระเป๋าจริงสั้นกว่านี้มาก */
+const MAX_NAME_LENGTH = 100;
 const CURRENCY = 'THB';
 /** ฟิลด์ที่ยอมรับจาก input — ที่เหลือ (userId, id, archivedAt, currency, …) ระบบกำหนดเอง = ปฏิเสธ */
 const ALLOWED_KEYS: readonly string[] = ['name', 'kind', 'initialBalance', 'icon', 'color'];
@@ -64,6 +66,8 @@ export function validateAccount(input: unknown): ValidAccount {
   // เก็บชื่อแบบตัดช่องว่างหัวท้าย (DB บังคับ btrim(name) <> '' และ unique คิดแบบ lower(btrim(name)))
   const name = requiredText(raw.name, 'ชื่อกระเป๋า').trim();
   if (name === '') throw new ValidationError('ต้องระบุชื่อกระเป๋า');
+  // เพดานความยาว (audit F4): ชื่อที่ผู้ใช้ตั้ง = ข้อมูลของเขา → โยน ValidationError ไม่ตัดทิ้งเงียบ ๆ
+  if (name.length > MAX_NAME_LENGTH) throw new ValidationError(`ชื่อกระเป๋ายาวเกิน ${MAX_NAME_LENGTH} ตัวอักษร`);
 
   // ไม่ส่ง kind = 'cash' (accounts.kind not null default 'cash' ใน DB) — ส่งมาแล้วต้องอยู่ในลิสต์ของ check
   const kind = raw.kind ?? 'cash';

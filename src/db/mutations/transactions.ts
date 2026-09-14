@@ -52,6 +52,8 @@ const ALLOWED_KEYS: readonly string[] = [
 ];
 /** เพดานเดียวกับ schema.sql (amount > 0 and amount < 1e15) */
 const MAX_SATANG = 1_000_000_000_000_000;
+/** เพดานความยาวโน้ต (audit F4) — กัน payload ยาวผิดปกติ ไม่ใช่ข้อจำกัดการใช้งานจริง (โน้ตทั่วไปสั้นกว่านี้มาก) */
+const MAX_NOTE_LENGTH = 500;
 const CURRENCY = 'THB';
 
 function requiredText(value: unknown, field: string): string {
@@ -97,6 +99,10 @@ export function validateTransaction(input: unknown): ValidTransaction {
 
   if (raw.note != null && typeof raw.note !== 'string') throw new ValidationError('โน้ตต้องเป็นข้อความ');
   const note = typeof raw.note === 'string' ? raw.note : null;
+  // เพดานความยาว (audit F4): ข้อความที่ผู้ใช้พิมพ์ = ข้อมูลของเขา → ห้ามตัดทิ้งเงียบ ๆ ต้องบอกให้รู้
+  if (note !== null && note.length > MAX_NOTE_LENGTH) {
+    throw new ValidationError(`โน้ตยาวเกิน ${MAX_NOTE_LENGTH} ตัวอักษร`);
+  }
 
   let occurredAt: Date | null = null;
   if (raw.occurredAt != null && raw.occurredAt !== '') {

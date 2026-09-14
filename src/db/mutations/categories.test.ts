@@ -328,3 +328,13 @@ test('กู้คืนแล้วชนชื่อหมวดที่ส�
   assert.notEqual((await rawCategory(first.id)).archived_at, null, 'ไม่สำเร็จ = ต้องยัง archive อยู่');
   assert.equal((await rawCategory(second.id)).archived_at, null, 'แถวที่ active ต้องไม่ถูกแตะ');
 });
+
+test('ชื่อหมวดยาวเกิน 100 ตัวอักษรถูกปฏิเสธ (audit F4)', async () => {
+  const ok = await addCategory(db, SESSION_1, { kind: 'expense', name: 'ข'.repeat(100) });
+  assert.equal(ok.name.length, 100, '100 ตัวอักษรต้องผ่าน (ขอบบนพอดี)');
+
+  await assert.rejects(
+    () => addCategory(db, SESSION_1, { kind: 'expense', name: 'ข'.repeat(101) }),
+    (error: unknown) => error instanceof ValidationError && /ชื่อหมวดยาวเกิน 100/.test(error.message),
+  );
+});
