@@ -92,55 +92,70 @@ jobs:
 
           node scripts/prod-smoke.mjs "http://127.0.0.1:$PORT"
 
+
   # e2e ที่มี session จริง — ตรวจ flow ที่ต้องล็อกอิน (ยอดเงิน · รายการ · งบ · ถังขยะ · ส่งออก · ตั้งค่าอีเมล)
-  #   ใช้ Postgres service (ไม่ใช่ Neon) ⇒ ไม่ต้องมี secret จริงในไฟล์นี้
-  #   ทุกค่าปลอมถูกกำหนดใน job (BETTER_AUTH_SECRET ปลอม) · DATABASE_URL ชี้ service ในเครื่อง runner
+  #
+  # ⚠ ทำไมต้องเป็น Neon เท่านั้น (ห้ามกลับไปใช้ `services: postgres`)
+  #   แอปต่อ DB ผ่านไดรเวอร์ HTTP ของ Neon (`@neondatabase/serverless` ใน src/db/index.ts) ⇒ ต่อ Postgres ธรรมดาไม่ได้
+  #   หลักฐานจากการรันจริงบน GitHub ด้วย service postgres:17: `npm run migrate` ผ่าน (drizzle-kit ใช้ pg)
+  #   แต่ทุกหน้าของแอปได้ข้อมูลว่าง และ /export/transactions ตอบ 503 ⇒ เป็นข้อจำกัดของไดรเวอร์ ไม่ใช่บั๊กของสคริปต์
+  #   การเพิ่มไดรเวอร์ที่สองเข้าแอปเพื่อ CI = รองรับ deployment ที่ PLAN ไม่ได้เลือก + เพิ่มพื้นผิวเสี่ยง ⇒ ไม่ทำ
+  #
+  # ⇒ job นี้รันเมื่อมี secret `E2E_DATABASE_URL` (Neon branch สำหรับ CI) เท่านั้น
+  #   ไม่มี secret = **ข้ามอย่างชัดเจน ไม่แดง** (step เดียวที่พิมพ์บอกว่าข้าม) — และไม่ได้ถือว่า "ผ่าน"
+  #   หมายเหตุ: ใช้ URL เดียวกันทั้ง pooled/direct เพราะ runner ไม่ได้รันแบบ concurrent จริง
+  #   (ถ้าวันหนึ่งต้องการ pooled แยก ให้เพิ่ม secret ที่สองแล้วตั้ง DATABASE_URL จากตัวนั้น)
   e2e:
-    name: e2e smoke (จริง · มี session)
+    name: e2e smoke (Neon · มี session จริง)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: jodjai
-          POSTGRES_PASSWORD: jodjai-ci-not-a-real-credential
-          POSTGRES_DB: jodjai_e2e
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U jodjai -d jodjai_e2e"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
-      # ค่าปลอมสำหรับ CI เท่านั้น (ไม่ใช่ credential จริง) — BETTER_AUTH_URL ต้องเป็น https เพราะ production fail-fast
-      BETTER_AUTH_URL: https://example.com
-      BETTER_AUTH_SECRET: ci-e2e-dummy-secret-not-a-real-credential-000000
-      DATABASE_URL: postgresql://jodjai:jodjai-ci-not-a-real-credential@127.0.0.1:5432/jodjai_e2e
-      DATABASE_URL_DIRECT: postgresql://jodjai:jodjai-ci-not-a-real-credential@127.0.0.1:5432/jodjai_e2e
+      E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
     steps:
+      - name: ไม่มี secret E2E_DATABASE_URL — ข้าม job นี้
+        if: env.E2E_DATABASE_URL == ''
+        run: |
+          echo "::notice title=e2e smoke ถูกข้าม::ยังไม่ได้ตั้ง secret E2E_DATABASE_URL (Neon branch สำหรับ CI)"
+          echo "job นี้ต้องรันกับ Neon เท่านั้น เพราะแอปใช้ไดรเวอร์ HTTP ของ Neon (ดูคอมเมนต์หัว job)"
+          echo "สถานะ: ข้าม (skip) — ไม่ได้รัน build/start/e2e เลย จึงไม่ถือว่าผ่าน"
+
       - name: Checkout
+        if: env.E2E_DATABASE_URL != ''
         uses: actions/checkout@v7
 
       - name: Setup Node
+        if: env.E2E_DATABASE_URL != ''
         uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           cache: npm
 
       - name: Install dependencies
+        if: env.E2E_DATABASE_URL != ''
         run: npm ci
 
-      # e2e-smoke ต่อ Postgres ตรง ๆ ด้วยไดรเวอร์ `pg` ที่ pin ไว้ใน devDependencies แล้ว
-      #   (แอปจริงใช้ @neondatabase/serverless ⇒ pg อยู่ใน devDependencies เท่านั้น ไม่กระทบ bundle/runtime)
-      - name: Migrate schema (service DB)
+      # drizzle-kit อ่าน DATABASE_URL_DIRECT (drizzle.config.ts) — ส่งผ่าน env ไม่ interpolate ลง command (กัน secret หลุด log)
+      - name: Migrate schema (Neon)
+        if: env.E2E_DATABASE_URL != ''
+        env:
+          DATABASE_URL_DIRECT: ${{ secrets.E2E_DATABASE_URL }}
         run: npm run migrate
 
       - name: Build
+        if: env.E2E_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          BETTER_AUTH_URL: https://example.com
+          BETTER_AUTH_SECRET: ci-e2e-dummy-secret-not-a-real-credential-000000
         run: npx next build
 
       - name: Start server + run e2e smoke
+        if: env.E2E_DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          DATABASE_URL_DIRECT: ${{ secrets.E2E_DATABASE_URL }}
+          BETTER_AUTH_URL: https://example.com
+          BETTER_AUTH_SECRET: ci-e2e-dummy-secret-not-a-real-credential-000000
         run: |
           set -euo pipefail
           PORT=3601
@@ -156,4 +171,5 @@ jobs:
             sleep 1
           done
 
+          # สคริปต์ seed/ตรวจ/ล้างข้อมูลเองทั้งหมด (มี signal handler ล้างเมื่อถูกยกเลิกด้วย)
           BASE_URL="http://127.0.0.1:$PORT" node scripts/e2e-smoke.mjs
