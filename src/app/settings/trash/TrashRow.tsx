@@ -5,6 +5,8 @@ import { useState } from 'react';
 
 import { TransactionRow, type TransactionRowView } from '@/components/TransactionRow';
 import { announce } from '@/components/announce-store';
+import { ENTRY_KIND_LABELS } from '@/components/entry-view';
+import { formatRowAmount } from '@/lib/money';
 
 import { restoreTransactionAction } from './actions';
 
@@ -47,6 +49,8 @@ export function TrashRow({ view }: { view: TransactionRowView }) {
           type="button"
           onClick={restore}
           disabled={busy}
+          // ชื่อที่ screen reader อ่านต้องบอกว่าแถวไหน (แพตเทิร์นเดียวกับ TransactionRow) — ข้อมูลของผู้ใช้เองเท่านั้น
+          aria-label={`กู้คืนรายการ ${view.categoryName ?? ENTRY_KIND_LABELS[view.kind]} ${formatRowAmount(view)} ${view.dateLabel}`}
           className="min-h-11 rounded-btn border border-border-strong px-3 font-semibold disabled:opacity-40"
         >
           {busy ? 'กำลังกู้คืน…' : 'กู้คืน'}
