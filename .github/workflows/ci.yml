@@ -66,3 +66,27 @@ jobs:
 
       - name: Build
         run: npx next build
+
+      # prod smoke: สตาร์ทเซิร์ฟเวอร์ production จริงแล้วยิง HTTP ตรวจ (ไม่ใช้เบราว์เซอร์)
+      #   - พอร์ตตายตัว (3600) ไม่ชนกับอะไรใน runner · ใช้ env ปลอมชุดเดียวกับ build (ไม่มี secret จริง)
+      #   - รันผ่าน ./node_modules/.bin/next ตรง ๆ (ไม่ใช่ npx) เพราะ npx เป็น process แม่ที่ spawn ลูกอีกชั้น
+      #     → kill แล้วตัวเซิร์ฟเวอร์จริงจะกลายเป็น process กำพร้าค้าง job (ทดสอบแล้วในเครื่อง: npx ค้าง, direct binary ไม่ค้าง)
+      #   - trap EXIT ทำให้ kill ทุกกรณี (รวมตอน step ล้ม)
+      - name: Prod smoke
+        run: |
+          set -euo pipefail
+          PORT=3600
+          ./node_modules/.bin/next start -p "$PORT" > /tmp/next-start.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          # รอให้พร้อมจริง (สูงสุด 60 วิ) — poll endpoint ที่ไม่ต้องมี session
+          for attempt in $(seq 1 60); do
+            if curl -sf "http://127.0.0.1:$PORT/login" > /dev/null; then
+              echo "server พร้อมหลัง ${attempt} วิ"
+              break
+            fi
+            sleep 1
+          done
+
+          node scripts/prod-smoke.mjs "http://127.0.0.1:$PORT"
