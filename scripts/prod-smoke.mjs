@@ -35,26 +35,49 @@ const request = (path) => fetch(`${BASE}${path}`, { redirect: 'manual' });
 
 /** ข้อความที่บ่งชี้ว่าเป็นหน้า error/offline shell ของแอป (ไม่ใช่ข้อมูลผู้ใช้) */
 const ERROR_SHELL = /ลองใหม่|โหลดไม่สำเร็จ|ออฟไลน์/;
-/** สัญญาณข้อมูลการเงิน — ห้ามโผล่ในหน้าที่ไม่ควรมี (offline/หน้า error) */
+/**
+ * ร่องรอยของ "loading shell" ที่ stream มาก่อนที่ server component จะอ่าน session เสร็จ (200 + shell)
+ * เป็น **หลักฐานว่านี่คือ shell** เท่านั้น — ไม่ใช่เงื่อนไขที่ทำให้ผ่านด้วยตัวเอง (ต้องไม่มีสัญญาณข้อมูลด้วย)
+ * `aria-busy="true"`/`animate-pulse` มาจาก src/app/loading.tsx ซึ่งเป็น skeleton ล้วน (ไม่มีข้อความ)
+ */
+const LOADING_SHELL = /aria-busy="true"|animate-pulse|role="status"/;
+/** สัญญาณข้อมูลการเงิน — ห้ามโผล่ในหน้าที่ไม่ควรมี (offline/หน้า error/loading shell) */
 const MONEY_SIGNALS = ['฿', 'ยอดคงเหลือ', 'ยอดรับ', 'ยอดจ่าย', 'รายการล่าสุด'];
+/**
+ * สัญญาณ "บริบทผู้ใช้": คำที่โผล่เฉพาะเมื่อมี session จริง + อีเมลตัวแทนที่ระบบสร้างให้ (`@line.local`)
+ * ไม่ใช้ regex อีเมลกว้าง ๆ เพราะ HTML ของแอปมี `@font-face`/`@media` ใน <style> ที่ทำให้ false positive
+ * (ชื่อผู้ใช้จริงเป็นข้อความอิสระ ตรวจด้วยคำไม่ได้ — สองตัวนี้เป็นตัวแทนที่เชื่อถือได้ของ "มีข้อมูลผู้ใช้")
+ */
+const USER_SIGNALS = ['ออกจากระบบ', 'สวัสดี', '@line.local'];
+/** รวมทุกสัญญาณที่ห้ามหลุดในคำตอบของคนที่ยังไม่ล็อกอิน */
+const LEAK_SIGNALS = [...MONEY_SIGNALS, ...USER_SIGNALS];
 
-await check('/ (ไม่มีคุกกี้) ไม่ใช่ 5xx + ไป /login หรือเป็นหน้า error ที่ไม่มีข้อมูลการเงิน', async () => {
+await check('/ (ไม่มีคุกกี้) ไม่ใช่ 5xx + ไป /login หรือเป็น shell ที่ไม่มีข้อมูลการเงิน/บริบทผู้ใช้', async () => {
   const response = await request('/');
   const body = await response.text();
   must(response.status < 500, `ได้ ${response.status} (ห้าม 5xx)`);
 
+  // invariant เดียวที่ห้ามถอยไม่ว่าคำตอบจะเป็นรูปแบบไหน (307 · error shell · loading shell)
+  for (const signal of LEAK_SIGNALS) {
+    must(
+      !body.includes(signal),
+      `พบ "${signal}" ในคำตอบของ / ที่ไม่มีคุกกี้ — ข้อมูลผู้ใช้/การเงินหลุด (fail ทันทีไม่ว่ารูปแบบไหน)`,
+    );
+  }
+
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get('location') ?? '';
     must(location.includes('/login'), `redirect ไป "${location}" (ต้องเป็น /login)`);
-    return `→ ${response.status} ${location}`;
+    return `${response.status} → ${location} · ไม่มีสัญญาณข้อมูล`;
   }
 
   must(response.status === 200, `ได้ ${response.status} (รับได้เฉพาะ 3xx→/login หรือ 200)`);
-  must(ERROR_SHELL.test(body), 'หน้า 200 ต้องเป็น error/offline shell ที่บอกให้ลองใหม่');
-  for (const signal of MONEY_SIGNALS) {
-    must(!body.includes(signal), `หน้า error ต้องไม่มีสัญญาณการเงิน "${signal}"`);
-  }
-  return '200 error shell';
+  if (ERROR_SHELL.test(body)) return '200 error shell · ไม่มีสัญญาณข้อมูล';
+  if (LOADING_SHELL.test(body)) return '200 loading shell (aria-busy/animate-pulse) · ไม่มีสัญญาณข้อมูล';
+  must(
+    false,
+    'หน้า 200 ต้องเป็น error shell หรือ loading shell ที่ระบุได้ — ถ้าเป็นหน้าจริงของผู้ใช้ ต้องได้ 3xx→/login',
+  );
 });
 
 await check('/login 200 + ปุ่ม Google/LINE ครบ และ disabled เมื่อไม่ได้ตั้งคีย์', async () => {
