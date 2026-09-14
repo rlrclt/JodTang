@@ -9,6 +9,11 @@ name: CI
 #   - เลือก 24.x เพราะเป็น LTS (Krypton) ที่ยังได้รับการสนับสนุนยาวกว่า 22 และทดสอบแล้วว่า 146/146 ผ่านเหมือนกัน
 #     (เครื่อง dev ใช้ 26.8.2 ซึ่งยังเป็น Current ไม่ใช่ LTS — ไม่เลือกเป็นตัว pin ของ CI)
 # ถ้าอนาคตอัปเป็น 26 LTS ให้แก้ที่จุดเดียวนี้
+#
+# เวอร์ชันของ action: ใช้ v7 (release ล่าสุด ณ 2026-09: checkout v7.0.1, setup-node v7.0.0)
+# เหตุผล: ต้องเป็น action ที่ประกาศ `runs.using: node24` ไม่งั้น GitHub ขึ้น annotation ว่า
+#   "Node.js 20 is deprecated ... forced to run on Node.js 24" — ตรวจ action.yml จริงแล้วว่า v5/v6/v7 ใช้ node24 ทั้งหมด
+#   เลือก v7 (ตัวล่าสุด) เพื่อไม่ให้ workflow เก่าตั้งแต่เกิด และยืนยันว่าอินพุตที่ใช้ (node-version, cache) ยังมีใน v7
 on:
   push:
     branches: [main]
@@ -37,10 +42,10 @@ jobs:
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci-placeholder-never-connected
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           cache: npm
