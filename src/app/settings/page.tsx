@@ -74,6 +74,18 @@ export default async function SettingsPage() {
             </span>
           </Link>
         </li>
+        {/* รายการที่ลบแล้ว — หน้าที่ทำงานจริงแล้ว (wave21): กู้คืนรายการที่กดลบพลาด */}
+        <li className="border-b border-border">
+          <Link href="/settings/trash" className="flex min-h-14 items-center justify-between gap-3 px-4">
+            <span>รายการที่ลบแล้ว</span>
+            <span className="flex items-center gap-1 text-[13px] text-text-muted">
+              กู้คืนรายการที่ลบ
+              <svg className="size-4" aria-hidden="true">
+                <use href="#i-chevron-right" />
+              </svg>
+            </span>
+          </Link>
+        </li>
         {/* ธีม: ไม่มีแถว "เร็ว ๆ นี้" ค้างในลิสต์ (wave18 sweep) — แอปยังไม่มีตัวสลับธีมใน UI
             ตัวจริงตามระบบทำงานอยู่ (THEME_SCRIPT ใน layout) และบอกความจริงไว้ท้ายหน้าแทนปุ่มที่กดไม่ได้ */}
       </ul>

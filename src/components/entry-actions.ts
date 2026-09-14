@@ -309,7 +309,8 @@ export async function updateEntryAction(input: {
 }
 
 /**
- * ลบรายการ = soft delete (ชั้นข้อมูลตั้ง `deletedAt`) — แถวยังอยู่ใน DB เป็นประวัติ กู้คืนจากในแอปไม่ได้
+ * ลบรายการ = soft delete (ชั้นข้อมูลตั้ง `deletedAt`) — แถวยังอยู่ใน DB เป็นประวัติ
+ * กู้คืนได้ที่ ตั้งค่า › รายการที่ลบแล้ว (`src/app/settings/trash` → restoreTransactionAction)
  * แถวหาย/ถูกลบไปก่อนแล้ว → ValidationError ข้อความไทย → คืน {ok:false,message} (ไม่ใช่ 500)
  */
 export async function deleteEntryAction(id: string): Promise<EntryWriteResult> {
