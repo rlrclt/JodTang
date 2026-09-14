@@ -12,6 +12,7 @@ import { gateSession } from '@/lib/session';
 
 import type { BudgetItem } from './BudgetSheet';
 import { BudgetList } from './BudgetList';
+import { logServer } from '@/lib/log';
 
 export const metadata = { title: 'งบประมาณ · จดจ่าย' };
 
@@ -60,7 +61,7 @@ export default async function BudgetsPage({ searchParams }: { searchParams: Prom
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
     // ตัวเลขที่โหลดไม่ได้ต้องไม่ล้มทั้งหน้า: บอกเป็นแถบ + ปุ่มลองใหม่ (design §4)
-    console.error('[jodjai] โหลดงบประมาณไม่สำเร็จ:', error);
+    logServer('budgets.load_failed', { error, route: '/settings/budgets' });
   }
 
   return (

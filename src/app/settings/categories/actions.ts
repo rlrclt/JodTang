@@ -7,6 +7,7 @@ import { ValidationError } from '@/db/errors';
 import { addCategory, archiveCategory, restoreCategory, updateCategory } from '@/db/mutations/categories';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 export type ManageResult = { ok: true } | { ok: false; message: string };
 
@@ -37,7 +38,7 @@ function isDuplicateName(error: unknown): boolean {
 function categoryMessage(error: unknown, fallback: string): string {
   if (isDuplicateName(error)) return DUPLICATE_NAME;
   if (error instanceof ValidationError) return error.message;
-  console.error('[jodjai] category write failed:', error);
+  logServer('categories.write_failed', { error });
   return fallback;
 }
 

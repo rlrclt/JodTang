@@ -20,6 +20,7 @@ import { firstRunState } from '@/db/queries/user-state';
 import { listCategories, suggestedCategoryId, type CategoryRow } from '@/db/queries/categories';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 export type EntryOptionsResult = { ok: true; options: EntryOptions } | { ok: false; message: string };
 export type EntryWriteResult = { ok: true } | { ok: false; message: string };
@@ -40,7 +41,7 @@ function isDuplicateName(error: unknown): boolean {
 function userMessage(error: unknown, fallback: string, duplicate: string): string {
   if (isDuplicateName(error)) return duplicate;
   if (error instanceof ValidationError) return error.message;
-  console.error('[jodjai] entry write failed:', error);
+  logServer('transactions.write_failed', { error });
   return fallback;
 }
 
@@ -76,7 +77,7 @@ export async function loadEntryOptions(): Promise<EntryOptionsResult> {
     };
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
-    console.error('[jodjai] โหลดตัวเลือกในชีตไม่สำเร็จ:', error);
+    logServer('entry.options_failed', { error });
     return { ok: false, message: 'โหลดตัวเลือกไม่สำเร็จ ลองใหม่' };
   }
 }
@@ -256,7 +257,7 @@ export async function loadEntryForEditAction(id: string): Promise<EntryLoadResul
     };
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
-    console.error('[jodjai] เปิดรายการเพื่อแก้ไม่สำเร็จ:', error);
+    logServer('entry.load_failed', { error });
     return { ok: false, message: 'เปิดรายการนี้ไม่สำเร็จ ลองใหม่' };
   }
 }

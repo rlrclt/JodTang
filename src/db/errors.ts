@@ -5,8 +5,11 @@
  *   - input ที่เราตรวจเองไม่ผ่าน  → ValidationError (ข้อความไทย) ยิงก่อนถึง DB
  *   - DB ปฏิเสธ (uuid/FK/unique/check) → toUserError() แปลเป็น ValidationError ที่จุดเดียว
  *   - รหัสที่ไม่รู้จัก = ปล่อย error เดิมผ่าน (บั๊กจริง/DB ล่ม ต้องเห็น stack ไม่ใช่กลายเป็นข้อความผู้ใช้)
- * error เดิมยังอยู่ที่ cause + console.error ไว้ debug
+ * error เดิมยังอยู่ที่ cause + logServer('db.write_rejected') ไว้ debug
  */
+
+import { logServer } from '../lib/log.ts';
+
 /** input ผิดกติกาของผู้ใช้ (ไม่ใช่บั๊ก) — server action ควรตอบเป็นข้อความให้ผู้ใช้ ไม่ใช่ 500 */
 export class ValidationError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -46,7 +49,8 @@ export function toUserError(
   const code = pgCode(error) ?? '';
   const message = messages[code] ?? DB_ERROR_MESSAGES[code];
   if (!message) return error;
-  console.error('[jodjai] write rejected by DB:', error);
+  // log แบบมีโครงสร้าง: รหัส PG ขึ้นบนสุดเพื่อกรองย้อนหลังได้ · ข้อความของ PG (ที่มีค่าจริง เช่นอีเมล) ถูกปิดโดย logServer
+  logServer('db.write_rejected', { error, code });
   return new ValidationError(message, { cause: error });
 }
 

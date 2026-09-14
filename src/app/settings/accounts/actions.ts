@@ -7,6 +7,7 @@ import { ValidationError } from '@/db/errors';
 import { addAccount, archiveAccount, restoreAccount, updateAccount } from '@/db/mutations/accounts';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 export type ManageResult = { ok: true } | { ok: false; message: string };
 
@@ -31,7 +32,7 @@ function isDuplicateName(error: unknown): boolean {
 function accountMessage(error: unknown, fallback: string): string {
   if (isDuplicateName(error)) return DUPLICATE_NAME;
   if (error instanceof ValidationError) return error.message;
-  console.error('[jodjai] account write failed:', error);
+  logServer('accounts.write_failed', { error });
   return fallback;
 }
 

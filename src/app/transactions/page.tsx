@@ -14,6 +14,7 @@ import { periodMonthOfBkk } from '@/lib/month';
 import { monthScopeFromParam, withMonth } from '@/lib/month-url';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { gateSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 /** 50 แถวต่อหน้าตาม keyset (spec §3) · เพดาน 10 หน้า กัน URL ประสงค์ร้าย */
 const PAGE_LIMIT = 50;
@@ -124,7 +125,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     }
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
-    console.error('[jodjai] โหลดรายการไม่สำเร็จ:', error);
+    logServer('transactions.load_failed', { error, route: '/transactions' });
     return <LoadFailed message="โหลดรายการไม่สำเร็จ" />;
   }
 

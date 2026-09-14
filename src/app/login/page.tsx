@@ -4,6 +4,7 @@ import { LoginButtons } from '@/components/AuthButtons';
 import { authErrorFor } from '@/components/auth-errors';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 export const metadata = { title: 'เข้าสู่ระบบ · จดจ่าย' };
 
@@ -18,7 +19,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     signedIn = Boolean(await getSession());
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next (build) — ห้ามกลืน
-    console.error('[jodjai] อ่าน session ไม่ได้ (หน้าเข้าสู่ระบบ):', error);
+    logServer('session.read_failed', { error, route: '/login' });
   }
   if (signedIn) redirect('/');
 

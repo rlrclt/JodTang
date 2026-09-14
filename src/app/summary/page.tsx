@@ -14,6 +14,7 @@ import { withMonth } from '@/lib/month-url';
 import { formatSatang } from '@/lib/money';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { gateSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 /** ป้ายเดือนสั้นใต้แท่ง ('2026-09-01' → 'ก.ย.') — Intl เท่านั้น ไม่ประกอบชื่อเดือนเอง */
 const SHORT_MONTH = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', month: 'short' });
@@ -60,7 +61,7 @@ async function BudgetSection({ userId, periodMonth }: { userId: string; periodMo
     rows = await listBudgetProgress(getDb(), userId, periodMonth);
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
-    console.error('[jodjai] โหลดงบประมาณไม่สำเร็จ:', error);
+    logServer('summary.budget_progress_failed', { error, route: '/summary' });
     return <RetryBar message="โหลดงบไม่สำเร็จ" />;
   }
 
@@ -162,7 +163,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
     bars = toCategoryBars(byCategory, categoryById);
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
-    console.error('[jodjai] โหลดสรุปไม่สำเร็จ:', error);
+    logServer('summary.load_failed', { error, route: '/summary' });
     return <LoadFailed message="โหลดสรุปไม่สำเร็จ" />;
   }
 

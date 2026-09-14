@@ -8,6 +8,7 @@ import { deleteBudget, setBudget } from '@/db/mutations/budgets';
 import { periodMonthFromParam } from '@/lib/month';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 export type BudgetResult = { ok: true } | { ok: false; message: string };
 
@@ -20,7 +21,7 @@ const SIGNED_OUT = 'เซสชันหมดอายุ — เข้าส�
  */
 function userMessage(error: unknown, fallback: string): string {
   if (error instanceof ValidationError) return error.message;
-  console.error('[jodjai] budget write failed:', error);
+  logServer('budgets.write_failed', { error });
   return fallback;
 }
 

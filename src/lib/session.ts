@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import type { Session } from '@/db/session';
 import { getAuth } from '@/lib/auth';
 import { isNextControlFlow } from '@/lib/next-signals';
+import { logServer } from './log.ts';
 
 /** ผู้ใช้ที่ล็อกอิน + ข้อมูลที่หน้าจอใช้บอกว่า "เป็นใคร" (มาจาก session เท่านั้น) */
 export type SessionUser = Session & { name: string; email: string | null };
@@ -45,7 +46,7 @@ export async function gateSession(): Promise<SessionGate> {
   } catch (error) {
     // สัญญาณ prerender ของ Next (headers() ตอน build) ต้องโยนต่อ ไม่ใช่ log เป็น error ของเรา
     if (isNextControlFlow(error)) throw error;
-    console.error('[jodjai] อ่าน session ไม่ได้:', error);
+    logServer('session.read_failed', { error });
     return { unavailable: true };
   }
   if (!user) redirect('/login');

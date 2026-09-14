@@ -11,6 +11,7 @@ import { withMonth } from '@/lib/month-url';
 
 import { EmailControl } from './EmailControl';
 import { gateSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 // design.md §3 แท็บ 4 (ตั้งค่า) — บัญชี/ออกจากระบบ + งบประมาณ ทำงานจริงแล้ว ส่วนที่เหลือยังเป็นโครง
 // ของจริงตาม §4 S6: หมวดหมู่ · กระเป๋าเงิน · ธีม
@@ -28,7 +29,7 @@ export default async function SettingsPage() {
     profile = await getUserProfile(getDb(), userId);
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
-    console.error('[jodjai] อ่านโปรไฟล์อีเมลไม่สำเร็จ:', error);
+    logServer('profile.read_failed', { error, route: '/settings' });
   }
 
   return (

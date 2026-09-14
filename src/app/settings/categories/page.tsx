@@ -9,6 +9,7 @@ import { gateSession } from '@/lib/session';
 
 import { CategoryList } from './CategoryList';
 import type { CategoryItem } from './CategorySheet';
+import { logServer } from '@/lib/log';
 
 export const metadata = { title: 'หมวดหมู่ · จดจ่าย' };
 
@@ -41,7 +42,7 @@ export default async function CategoriesPage() {
     }));
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
-    console.error('[jodjai] โหลดหมวดไม่สำเร็จ:', error);
+    logServer('categories.load_failed', { error, route: '/settings/categories' });
   }
 
   return (

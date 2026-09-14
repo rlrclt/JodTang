@@ -6,6 +6,7 @@ import { toCsv } from '@/lib/export-format';
 import { monthScopeFromParam } from '@/lib/month-url';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 /**
  * GET /export/transactions — ดาวน์โหลดรายการทั้งหมดเป็น CSV (wave27 · local://wave27-design.md)
@@ -40,7 +41,7 @@ export async function GET(request: Request): Promise<Response> {
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
     // DB ล่ม/ตรวจ session ไม่ได้ — บอกตรง ๆ เป็นข้อความ ไม่ใช่ไฟล์เปล่าที่ดูเหมือนสำเร็จ
-    console.error('[jodjai] ส่งออก CSV: ตรวจ session ไม่ได้:', error);
+    logServer('session.read_failed', { error, route: '/export/transactions' });
     return errorResponse(503, 'ฐานข้อมูลไม่ตอบสนองตอนนี้ — ลองใหม่ภายหลัง');
   }
   if (!session) return errorResponse(401, 'ต้องเข้าสู่ระบบก่อนส่งออกข้อมูล');
@@ -85,7 +86,7 @@ export async function GET(request: Request): Promise<Response> {
     });
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
-    console.error('[jodjai] ส่งออก CSV ไม่สำเร็จ:', error);
+    logServer('export.csv_failed', { error, route: '/export/transactions' });
     return errorResponse(503, 'ส่งออกไม่สำเร็จตอนนี้ — ลองใหม่ภายหลัง');
   }
 }

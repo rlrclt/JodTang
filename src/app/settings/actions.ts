@@ -7,6 +7,7 @@ import { ValidationError } from '@/db/errors';
 import { setOwnEmail } from '@/db/mutations/profile';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 /**
  * ผลลัพธ์ที่ UI ใช้ได้ทันที — **ค่ามาจาก DB จริง** (UPDATE … RETURNING ในชั้นข้อมูล) ไม่ใช่ค่าที่ผู้ใช้พิมพ์
@@ -44,7 +45,7 @@ export async function saveEmailAction(input: { email: string | null }): Promise<
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
     if (error instanceof ValidationError) return { ok: false, message: error.message };
-    console.error('[jodjai] บันทึกอีเมลไม่สำเร็จ:', error);
+    logServer('profile.save_failed', { error });
     return { ok: false, message: 'บันทึกอีเมลไม่สำเร็จ ลองใหม่' };
   }
 }

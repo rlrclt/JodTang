@@ -11,6 +11,7 @@ import { isNextControlFlow } from '@/lib/next-signals';
 import { gateSession } from '@/lib/session';
 
 import { TrashRow } from './TrashRow';
+import { logServer } from '@/lib/log';
 
 export const metadata = { title: 'รายการที่ลบแล้ว · จดจ่าย' };
 
@@ -73,7 +74,7 @@ export default async function TrashPage({ searchParams }: { searchParams: Search
     loaded = true;
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
-    console.error('[jodjai] โหลดรายการที่ลบแล้วไม่สำเร็จ:', error);
+    logServer('trash.load_failed', { error, route: '/settings/trash' });
   }
 
   return (

@@ -13,6 +13,7 @@ import { withMonth } from '@/lib/month-url';
 import { formatRowAmount, formatSatang } from '@/lib/money';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { gateSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 /** จำนวนแถวล่าสุดในหน้าแรก (design.md §4 S2) */
 const RECENT_LIMIT = 20;
@@ -28,7 +29,7 @@ async function FirstRunSection({ userId }: { userId: string }) {
     state = await firstRunState(getDb(), userId);
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
-    console.error('[jodjai] อ่าน firstRunState ไม่ได้ — ซ่อนการ์ดเริ่มใช้งาน:', error);
+    logServer('home.first_run_failed', { error, route: '/' });
     return null;
   }
 
@@ -69,7 +70,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
     // DB ล่ม/เน็ตขาด: ห้ามปล่อยให้ throw (ผู้ใช้จะเจอ 500 เปล่า/404 อังกฤษ) — แสดงข้อความไทย + ปุ่มลองใหม่
-    console.error('[jodjai] โหลดข้อมูลหน้าแรกไม่สำเร็จ:', error);
+    logServer('home.load_failed', { error, route: '/' });
     return <LoadFailed message="โหลดยอดเดือนนี้ไม่สำเร็จ" />;
   }
 

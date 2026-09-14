@@ -5,6 +5,7 @@ import { buildBackupSnapshot } from '@/db/queries/export';
 import { toJson } from '@/lib/export-format';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 /**
  * GET /export/backup — สำรองข้อมูลทั้งบัญชีเป็น JSON (wave27 · local://wave27-design.md)
@@ -33,7 +34,7 @@ export async function GET(): Promise<Response> {
     session = await getSession();
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
-    console.error('[jodjai] ส่งออก JSON: ตรวจ session ไม่ได้:', error);
+    logServer('session.read_failed', { error, route: '/export/backup' });
     return errorResponse(503, 'ฐานข้อมูลไม่ตอบสนองตอนนี้ — ลองใหม่ภายหลัง');
   }
   if (!session) return errorResponse(401, 'ต้องเข้าสู่ระบบก่อนส่งออกข้อมูล');
@@ -55,7 +56,7 @@ export async function GET(): Promise<Response> {
     if (isNextControlFlow(error)) throw error;
     // ValidationError (เพดาน) = ความผิดของผู้ใช้ ไม่ใช่เซิร์ฟเวอร์พัง → 413 + ข้อความไทยจากชั้นข้อมูล
     if (error instanceof ValidationError) return errorResponse(413, error.message);
-    console.error('[jodjai] ส่งออก JSON ไม่สำเร็จ:', error);
+    logServer('export.backup_failed', { error, route: '/export/backup' });
     return errorResponse(503, 'ส่งออกไม่สำเร็จตอนนี้ — ลองใหม่ภายหลัง');
   }
 }

@@ -7,6 +7,7 @@ import { ValidationError } from '@/db/errors';
 import { restoreTransaction } from '@/db/mutations/transactions';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
+import { logServer } from '@/lib/log';
 
 export type RestoreResult = { ok: true } | { ok: false; message: string };
 
@@ -36,7 +37,7 @@ export async function restoreTransactionAction(id: string): Promise<RestoreResul
   } catch (error) {
     if (isNextControlFlow(error)) throw error;
     if (error instanceof ValidationError) return { ok: false, message: error.message };
-    console.error('[jodjai] กู้คืนรายการไม่สำเร็จ:', error);
+    logServer('transactions.restore_failed', { error });
     return { ok: false, message: 'กู้คืนไม่สำเร็จ ลองใหม่' };
   }
 }

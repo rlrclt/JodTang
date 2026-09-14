@@ -9,6 +9,7 @@ import { gateSession } from '@/lib/session';
 
 import { AccountList } from './AccountList';
 import type { AccountItem } from './AccountSheet';
+import { logServer } from '@/lib/log';
 
 export const metadata = { title: 'กระเป๋าเงิน · จดจ่าย' };
 
@@ -46,7 +47,7 @@ export default async function AccountsPage() {
     }));
   } catch (error) {
     if (isNextControlFlow(error)) throw error; // สัญญาณ prerender ของ Next — ห้ามกลืน
-    console.error('[jodjai] โหลดกระเป๋าไม่สำเร็จ:', error);
+    logServer('accounts.load_failed', { error, route: '/settings/accounts' });
   }
 
   return (
