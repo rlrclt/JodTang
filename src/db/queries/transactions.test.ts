@@ -22,6 +22,7 @@ import type { Db } from '../index.ts';
 import * as schema from '../schema.ts';
 import {
   listTransactionPage,
+  loadEntryForEdit,
   monthExpenseByCategory,
   monthRows,
   monthTotals,
@@ -39,6 +40,7 @@ const A_U2 = '33333333-3333-3333-3333-333333333333';
 const C = (n: number) => `10000000-0000-0000-0000-0000000000${String(n).padStart(2, '0')}`;
 const [C_FOOD, C_TRAVEL, C_RENT, C_SUPPLY, C_UTIL, C_COFFEE, C_SALARY, C_SALES, C_U2E, C_U2I] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(C);
 
+const C_MISSING = '99999999-9999-9999-9999-999999999999';
 const SEPT = '2026-09-01';
 const OCT = '2026-10-01';
 // ยอดที่ต้องได้ของ u1 เดือน ก.ย. (คิดมือไว้ล่วงหน้า ไม่ได้ derive จากโค้ดที่จะเทสต์)
@@ -279,4 +281,45 @@ test('ง) query ของหน้ารายการใช้ index (ไม�
   assert.doesNotMatch(latest, /Sort/, `index ต้องเรียงให้แล้ว ไม่ต้อง Sort เพิ่ม:\n${latest}`);
   assert.match(monthPage, /transactions_user_(recent|month)_idx/, `หน้าต้องกรองด้วย index:\n${monthPage}`);
   assert.doesNotMatch(monthPage, /Seq Scan/, `ห้ามตกเป็น Seq Scan:\n${monthPage}`);
+});
+
+test('loadEntryForEdit: ของตัวเองได้แถวครบ · ของคนอื่น/ที่ลบแล้ว/ไม่มีจริง = null · 1 query', async () => {
+  const mine = await monthRows(db, U1, SEPT);
+  const target = mine[0];
+
+  const loaded = await loadEntryForEdit(db, U1, target.id);
+  assert.ok(loaded, 'ของตัวเองต้องโหลดได้');
+  assert.equal(loaded.id, target.id);
+  assert.equal(loaded.amount, target.amount);
+  assert.equal(loaded.kind, target.kind);
+  assert.equal(loaded.accountId, target.accountId);
+  assert.equal(loaded.categoryId, target.categoryId);
+  assert.equal(loaded.deletedAt, null);
+  assert.ok(loaded.occurredAt instanceof Date, 'occurredAt ต้องเป็น Date ให้ฟอร์มแก้ใช้ได้');
+  assert.equal(typeof loaded.note === 'string' || loaded.note === null, true, 'note ต้องมีให้ฟอร์ม prefill');
+
+  // ของผู้ใช้คนอื่น
+  const u2Row = (await monthRows(db, U2, SEPT))[0];
+  assert.equal(await loadEntryForEdit(db, U1, u2Row.id), null, 'ของ u2 ต้องไม่หลุดให้ u1');
+  assert.ok(await loadEntryForEdit(db, U2, u2Row.id), 'u2 เห็นของตัวเอง');
+
+  // ที่ถูกลบแล้ว (fixture มีแถว soft delete อยู่จริง — ยืนยันก่อนว่าไม่มีในผลลัพธ์)
+  const deleted = await pglite.query<{ id: string }>(
+    `select id from transactions where user_id = '${U1}' and deleted_at is not null limit 1`,
+  );
+  assert.equal(deleted.rows.length, 1, 'fixture ต้องมีแถวที่ถูกลบ ไม่งั้นเทสต์นี้พิสูจน์อะไรไม่ได้');
+  assert.equal(await loadEntryForEdit(db, U1, deleted.rows[0].id), null, 'แถวที่ถูกลบแล้ว = null');
+
+  // id ที่ไม่มีในตาราง
+  assert.equal(await loadEntryForEdit(db, U1, C_MISSING), null);
+
+  // แถวที่มีโน้ตจริง (fixture: 'ข้าวมันไก่') — ฟอร์มแก้ต้อง prefill ได้
+  const withNote = mine.find((row) => row.amount === 18_500);
+  assert.ok(withNote);
+  const loadedNote = await loadEntryForEdit(db, U1, withNote.id);
+  assert.equal(loadedNote?.note, 'ข้าวมันไก่');
+
+  queryCount = 0;
+  await loadEntryForEdit(db, U1, target.id);
+  assert.equal(queryCount, 1, '1 query');
 });
