@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { OptionGroup, optionChipClass } from '@/components/FormControls';
-import { buildHref, searchInputAfterUrlChange } from '@/components/transactions-view';
+import { SEARCH_MAX_LENGTH, buildHref, searchInputAfterUrlChange } from '@/components/transactions-view';
 
 export type CategoryOption = { id: string; name: string; color: string | null };
 export type AccountOption = { id: string; name: string };
@@ -78,6 +78,8 @@ export function SearchBox({ base, q }: { base: string; q: string }) {
         onKeyDown={(event) => {
           if (event.key === 'Enter') submitNow();
         }}
+        // ใส่ที่ input เพื่อให้ผู้ใช้เห็นเองว่าเกินไม่ได้ แทนที่จะถูกตัดเงียบ ๆ ตอนค้น (ชั้น DB ตัดซ้ำเป็นตาข่าย)
+        maxLength={SEARCH_MAX_LENGTH}
         placeholder="ค้นหาโน้ต/ชื่อหมวด"
         autoComplete="off"
         enterKeyHint="search"

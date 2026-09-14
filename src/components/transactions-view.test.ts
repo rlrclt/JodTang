@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildHref, emptyStateFor, searchInputAfterUrlChange } from './transactions-view.ts';
+import { SEARCH_MAX_LENGTH, buildHref, emptyStateFor, searchInputAfterUrlChange } from './transactions-view.ts';
 
 test('ช่องค้นหา: URL เปลี่ยนเพราะ replace ของเราเอง → ไม่แตะสิ่งที่ผู้ใช้พิมพ์', () => {
   // เราสั่ง replace(q='กาแฟ') → prop q กลายเป็น 'กาแฟ' ขณะที่ผู้ใช้พิมพ์ต่อเป็น 'กาแฟเย็น'
@@ -79,4 +79,11 @@ test('ว่าง: เดือนนี้ว่างแต่มีข้อ
 test('ว่าง: ดูเดือนอื่นที่ว่าง (มีข้อมูลเดือนอื่น) → "เดือนนี้ยังไม่มีรายการ" + กลับเดือนนี้', () => {
   const state = emptyStateFor({ rowCount: 0, activeFilterCount: 0, hasAnyTransaction: true, isCurrentMonth: false });
   assert.deepEqual(state, { message: 'เดือนนี้ยังไม่มีรายการ', action: 'back-to-current' });
+});
+
+test('เพดานคำค้นของ UI ต้องเท่ากับเพดานที่ชั้นข้อมูลใช้ตัด', async () => {
+  // ชั้นข้อมูลตัดคำค้นที่ 200 แบบเงียบ ๆ — ถ้า UI ยอมให้พิมพ์ยาวกว่านั้น ผู้ใช้จะถูกตัดโดยไม่รู้ตัว
+  // (เทสต์นี้คือตัวกันไม่ให้ค่าสองฝั่งเพี้ยนกันในอนาคต โดยไม่ต้องให้ client import โมดูล DB)
+  const { MAX_SEARCH_LENGTH } = await import('../db/queries/transactions.ts');
+  assert.equal(SEARCH_MAX_LENGTH, MAX_SEARCH_LENGTH);
 });
