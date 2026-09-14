@@ -1,7 +1,7 @@
 # จดจ่าย (JodJai) — แผนโปรเจกต์ v1
 
 webapp รายรับรายจ่าย · mobile-first · รู้สึกเหมือนแอป native
-สถานะ: รออนุมัติแผน (ยังไม่เริ่มเขียนโค้ด)
+สถานะ: เริ่มพัฒนาแล้ว — ฟีเจอร์ v1 (§1) ทำงานจริงครบ ดูรายการที่มีจริงและคำสั่งรันที่ README.md (บรรทัดนี้เดิมเขียนว่า "รออนุมัติแผน (ยังไม่เริ่มเขียนโค้ด)")
 ไฟล์ที่เกี่ยวข้อง: `docs/diagrams.html` (ไดอะแกรม) · `docs/design.md` (theme + UX จาก architect) · `docs/schema.sql` (DDL จริง)
 
 ---
@@ -126,7 +126,7 @@ DDL จริงอยู่ที่ `docs/schema.sql` (แหล่งคว�
 - `occurred_at timestamptz` (เวลาเกิดรายการ ไม่ใช่เวลา insert) — สรุปเดือนต้องตัดตาม timezone ผู้ใช้ v1 ล็อก `Asia/Bangkok` (ตาราง user_settings ยังไม่ทำใน v1)
 - ลบรายการ = `deleted_at` (soft delete) ทุก query ต้องกรอง `deleted_at is null` · กระเป๋า/หมวดที่เลิกใช้ = `archived_at`
 - กันข้อมูลรั่วข้ามบัญชีที่ชั้น DB: FK แบบ composite `(account_id, user_id)` / `(category_id, kind, user_id)` — แม้แอปมีบั๊กก็อ้างของคนอื่นไม่ได้
-- ตรวจว่า DDL รันได้จริงด้วย `cd /tmp/sqlcheck && node check.mjs` (PGlite = Postgres จริงใน WASM) มี assertion เรื่องยอดรวม, soft delete, ข้ามผู้ใช้, kind ไม่ตรง
+- ตรวจว่า DDL รันได้จริงด้วย `node docs/tools/schema_check.mjs` (PGlite = Postgres จริงใน WASM) มี assertion เรื่องยอดรวม, soft delete, ข้ามผู้ใช้, kind ไม่ตรง
 - ทุกตารางมี `user_id` + index ที่ใช้จริงกับหน้าแรก/หน้าสรุป (ดูใน schema.sql)
 
 ---

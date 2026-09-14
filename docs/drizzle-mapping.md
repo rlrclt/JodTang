@@ -1,9 +1,9 @@
 # drizzle mapping — `schema.ts` ⇄ `docs/schema.sql`
 
 ทำไมมีไฟล์นี้: เฟส 1 มีเกณฑ์รับว่า "`npx drizzle-kit generate` แล้ว diff กับ `docs/schema.sql`" ถ้าไม่มีใครระบุว่า *อะไรต่างได้ อะไรต่างไม่ได้* เกณฑ์นี้จะกลายเป็นเถียงกันเรื่องชื่อ constraint
-ค่าทั้งหมดในไฟล์นี้ **รันจริง** ด้วย drizzle-orm **0.45.2** + drizzle-kit **0.31.10** (ติดตั้งใน `/tmp/drizzle-probe` ไม่ได้แตะโปรเจกต์) — ไม่ได้อ่านจากเอกสารแล้วเดา
+ค่าทั้งหมดในไฟล์นี้ **รันจริง** ด้วย drizzle-orm **0.45.2** + drizzle-kit **0.31.10** (ติดตั้งชั่วคราวใต้ `/tmp` ตอนวัด แล้วลบทิ้ง — ไม่ได้แตะโปรเจกต์) — ไม่ได้อ่านจากเอกสารแล้วเดา
 
-กติกาพื้นฐาน: `docs/schema.sql` = แหล่งความจริง · `schema.ts` ต้อง generate ออกมา **เทียบเท่า** · ไฟล์ใน `migrations/` คือผลลัพธ์ ไม่ใช่ต้นฉบับ (ห้ามแก้ migration มือ ยกเว้นบล็อก INCLUDE ที่ระบุไว้ด้านล่าง)
+กติกาพื้นฐาน: `docs/schema.sql` = แหล่งความจริง · `schema.ts` ต้อง generate ออกมา **เทียบเท่า** · โฟลเดอร์ **`drizzle/`** (ค่า `out` ใน `drizzle.config.ts`) คือผลลัพธ์ ไม่ใช่ต้นฉบับ (ห้ามแก้ migration มือ ยกเว้นบล็อก INCLUDE และ trigger ที่ระบุในข้อ 2)
 
 ## 1) สิ่งที่ drizzle เขียนได้ครบ (ทดสอบแล้ว generate ออกมาตรงกับ DDL เรา)
 
@@ -53,25 +53,27 @@ create index transactions_user_category_time_idx on transactions (user_id, categ
 
 | ความต่าง | ตัวอย่างจริง | ทำไมยอมรับได้ |
 |---|---|---|
-| ชื่อ constraint ที่ PG ตั้งให้ | DDL ของเรา: `transactions_account_id_user_id_fkey` · drizzle: `transactions_account_id_user_id_accounts_id_user_id_fk` | ชื่อไม่มีความหมายต่อพฤติกรรม · ถ้าอยากให้ตรง ให้ตั้งชื่อเองใน DDL ทีหลัง (ไม่จำเป็น) |
+| ชื่อ constraint ที่ PG ตั้งให้เอง | DDL/PG: `session_user_id_fkey` (PG ตั้งให้จาก `references "user"(id)` แบบ inline) · drizzle: `session_user_id_user_id_fk` (`drizzle/0000_mighty_vulture.sql:131`) | ชื่อไม่มีความหมายต่อพฤติกรรม · **FK ที่แอปต้องอ้างชื่อเอง (composite 4 ตัว) ไม่ใช่ตัวอย่างของความต่าง** — `src/db/schema.ts` ตั้งชื่อให้ตรง DDL แล้ว จึงออกมาเป็น `transactions_account_id_user_id_fkey` ฯลฯ เหมือนกัน (`drizzle/0000:129,133-135`) |
 | `DESC NULLS LAST` vs `DESC` | drizzle ใส่ `NULLS LAST` ให้เอง | คอลัมน์นั้น `not null` → ไม่มีความต่างเชิงพฤติกรรม |
 | ลำดับ statement / การจัดกลุ่ม `ALTER TABLE` | drizzle แยก FK ไปเป็น `ALTER TABLE` ท้ายไฟล์ | ผลลัพธ์บน DB เหมือนกัน |
 | comment ในไฟล์ SQL | migration ไม่มี comment อะไรเลย | เราใช้ `--` inline ไม่ได้ใช้ `COMMENT ON` จึงไม่มีข้อมูลหาย |
 
 ## 4) acceptance ที่เชื่อได้จริง (ใช้แทนการ "diff ข้อความ SQL")
 
-**เครื่องมือพร้อมแล้ว: `/tmp/sqlcheck/catalog_diff.mjs`** (เขียนโดย architect · พิสูจน์ตัวเองด้วย `--selftest` แล้ว)
+**เครื่องมือพร้อมแล้วและอยู่ในเรป: `docs/tools/catalog_diff.mjs`** (พิสูจน์ตัวเองด้วย `--selftest` · รันจาก **รากโปรเจกต์** ไม่ต้องตั้ง env)
 
 ```bash
-cd /tmp/sqlcheck
-node catalog_diff.mjs --selftest /home/yoru/projects/jodjai/docs/schema.sql   # ต้องขึ้น "selftest ผ่าน — ตัวเทียบเชื่อได้"
-node catalog_diff.mjs /home/yoru/projects/jodjai/docs/schema.sql /home/yoru/projects/jodjai/migrations   # งานจริง
+node docs/tools/catalog_diff.mjs --selftest docs/schema.sql   # ต้องขึ้น "selftest ผ่าน — ตัวเทียบเชื่อได้"
+node docs/tools/catalog_diff.mjs docs/schema.sql drizzle      # งานจริง: ต้อง exit 0 + "catalog ตรงกันทั้งหมด"
+node docs/tools/schema_check.mjs                              # ตรวจ schema.sql เดี่ยว ๆ: apply ลง PGlite + assertion
 ```
+
+`drizzle` ในคำสั่งคือ **โฟลเดอร์ `out` ของ drizzle-kit** = `./drizzle` ตาม `drizzle.config.ts` (ไม่ใช่ `./migrations`)
 
 เทียบ 5 ชั้นโดย apply ของจริงลง Postgres 2 ตัว (PGlite): ตาราง/คอลัมน์ (ชนิด, not null, default, generated) · constraint (primary/unique/foreign/check) · index (คอลัมน์, INCLUDE, predicate, unique) · trigger · function
 ผ่านเมื่อ exit 0 และขึ้น `catalog ตรงกันทั้งหมด` · รายการที่ต่างจะถูกพิมพ์พร้อมเหตุผลว่าขาดใน B หรือเกินใน B
-`--selftest` พิสูจน์ว่าเครื่องมือจับของที่หายได้จริง: ตัด `include` 3 ตัว + trigger 4 ตัวออกจากสำเนาแล้วต้องรายงานครบ 3+4 และชั้นอื่นไม่ต่าง (ผลรันล่าสุด: ผ่าน)
-หมายเหตุ: `migrations` ในคำสั่งคือ path ของ `out` ใน `drizzle.config.ts` — แก้ path ให้ตรงของจริงได้เลย
+`--selftest` พิสูจน์ว่าเครื่องมือจับของที่หายได้จริง: ตัด `include` 3 ตัว + trigger 4 ตัวออกจากสำเนาแล้วต้องรายงานครบ 3+4 และชั้นอื่นไม่ต่าง
+ทั้งสองสคริปต์ใช้ PGlite ในหน่วยความจำ — **ไม่แตะข้อมูลจริงและไม่ต้องมี credential**
 
 การเทียบข้อความ SQL ไม่มีคุณค่า (ชื่อ/ลำดับต่างกันทันที) ให้เทียบ **catalog ของ DB 2 ตัว**:
 
@@ -80,10 +82,10 @@ node catalog_diff.mjs /home/yoru/projects/jodjai/docs/schema.sql /home/yoru/proj
 3. เทียบ: ตาราง/คอลัมน์/ชนิด/ไม่-null/default · `pg_constraint` (kind, columns, expression) · `pg_indexes` (คอลัมน์, include, predicate, unique)
 4. ต้องเท่ากันทั้งหมด ยกเว้น 3 ข้อในตารางข้อ 3
 
-ทำได้ด้วย PGlite 2 อินสแตนซ์ (สคริปต์แนวเดียวกับ `/tmp/sqlcheck/check.mjs` ที่ใช้ตรวจ `schema.sql`) — ถ้าต้องการ ผมเขียน harness ให้ verifier รันเป็นคำสั่งเดียวได้ (ยังไม่เขียน เพราะ `schema.ts` จริงยังไม่มี ของที่เทียบจึงยังไม่ครบ)
+`docs/tools/catalog_diff.mjs` ทำข้อ 1–3 ให้แล้วด้วย PGlite 2 อินสแตนซ์ — **ไม่ต้องเขียน harness เพิ่ม**
 
 ## 5) หมายเหตุสำหรับเฟส 1
 
-- Better Auth: 4 ตาราง (`user`, `session`, `account`, `verification`) ชื่อคอลัมน์ใน DB เป็น snake_case และ key ฝั่ง JS ต้องเป็นชื่อโมเดลของ Better Auth (`emailVerified`, `createdAt`) → `npx @better-auth/cli generate` จะได้ schema.ts ของเวอร์ชันจริง เอามาเทียบกับของเรา (มีเส้นคู่ขนานรันใน /tmp อยู่แล้ว)
+- Better Auth: 4 ตาราง (`user`, `session`, `account`, `verification`) ชื่อคอลัมน์ใน DB เป็น snake_case และ key ฝั่ง JS ต้องเป็นชื่อโมเดลของ Better Auth (`emailVerified`, `createdAt`) → `npx @better-auth/cli generate` จะได้ schema.ts ของเวอร์ชันจริง เอามาเทียบกับของเรา · **รอบล่าสุดยังไม่ได้รัน** (ดู `docs/reports/6.2-better-auth-diff-status.md`: ติดที่เครื่องมือ ยังไม่เริ่มรันคำสั่งใด ๆ) → ต้องรันก่อน migrate จริง
 - `session.expires_at` ต้องเป็น `timestamp with time zone` — ถ้า generate ออกมาเป็น timestamp เปล่า ให้ยึดฝั่ง schema.sql (เทียบเวลาหมดอายุผิด timezone = ผู้ใช้ถูกเตะออกผิดเวลา)
 - ห้าม `drizzle-kit push` ใส่ Neon branch ที่มีข้อมูลที่ต้องการเก็บ — ใช้ `generate` + review SQL + `migrate` เสมอ (`DATABASE_URL_DIRECT` เท่านั้น เพราะ pooled เป็น PgBouncer โหมด transaction รัน DDL ไม่ได้)
