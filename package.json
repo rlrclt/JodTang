@@ -2,6 +2,10 @@
   "name": "jodjai",
   "version": "0.1.0",
   "private": true,
+  "//engines": "เทสต์รันด้วย `node --test` กับไฟล์ .ts ตรง ๆ (ใช้ type stripping ในตัว Node, ไม่มี vitest/jest) → Node 22.18+ เท่านั้นที่ทำได้โดยไม่ต้องใส่ flag (ทดสอบแล้ว: 20.19.2 ล้ม, 22.18.0/24.21.0/26.8.2 ผ่าน)",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

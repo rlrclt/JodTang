@@ -1,0 +1,63 @@
+name: CI
+
+# รันเมื่อ push/PR เข้า main และกดรันเองได้จากแท็บ Actions
+#
+# หมายเหตุเรื่อง Node: เทสต์ของโปรเจกต์นี้ import ไฟล์ `.ts` ตรง ๆ แล้วรันด้วย `node --test`
+# (ใช้ type stripping ของ Node เอง ไม่มี vitest/jest) → ต้องเป็น Node ที่ strip types ให้อัตโนมัติ
+#   - Node 20 ใช้ไม่ได้ (ทดสอบแล้ว: v20.19.2 ล้มด้วย ERR_UNKNOWN_FILE_EXTENSION)
+#   - Node 22.18.0 ขึ้นไปใช้ได้โดยไม่ต้องใส่ flag (ทดสอบแล้ว: 146/146 ผ่าน ไม่มี env พิเศษ)
+#   - เลือก 24.x เพราะเป็น LTS (Krypton) ที่ยังได้รับการสนับสนุนยาวกว่า 22 และทดสอบแล้วว่า 146/146 ผ่านเหมือนกัน
+#     (เครื่อง dev ใช้ 26.8.2 ซึ่งยังเป็น Current ไม่ใช่ LTS — ไม่เลือกเป็นตัว pin ของ CI)
+# ถ้าอนาคตอัปเป็น 26 LTS ให้แก้ที่จุดเดียวนี้
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# อ่านโค้ดอย่างเดียวพอ — ไม่มีขั้นตอนไหนต้องเขียนกลับ repo
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: type-check · lint · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # env ปลอมสำหรับ build — CI ต้องไม่ต่อ DB จริงและไม่มี secret จริงอยู่ในไฟล์นี้
+      # BETTER_AUTH_URL ต้องเป็น https เพราะ createAuth() fail-fast เมื่อ production ไม่ใช่ https (src/lib/auth-env.ts)
+      BETTER_AUTH_URL: https://example.com
+      BETTER_AUTH_SECRET: ci-dummy-secret-not-a-real-credential-000000
+      # DATABASE_URL ปลอม (ไม่ใช่ credential จริง ไม่มีใครเชื่อมต่อ):
+      #   ไม่ตั้ง = build ผ่านก็จริง แต่ getAuth() จะล้มด้วย "DATABASE_URL ไม่ได้ตั้งไว้" ก่อน headers() ถูกเรียก
+      #   → Next จัดหน้า /, /summary, /transactions, /settings/* เป็น ○ static ผิด (ของจริงต้องเป็น ƒ dynamic)
+      #   วัดแล้ว: ใส่ค่านี้ทำให้ classification ตรงกับ production และ **ไม่มีการเชื่อมต่อออกไปเลย** (0 connection error, build 23s)
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci-placeholder-never-connected
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # ไม่ใช้ `npm run lint` (script นี้เป็น pattern ของ session นี้) — เรียก eslint ตรง ๆ
+      - name: Lint
+        run: ./node_modules/.bin/eslint .
+
+      # เทสต์ทั้งหมดของโปรเจกต์: ชั้นข้อมูล (PGlite), lib, และ component
+      - name: Test
+        run: node --test "src/db/**/*.test.ts" src/lib/*.test.ts src/components/*.test.ts
+
+      - name: Build
+        run: npx next build
