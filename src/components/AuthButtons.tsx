@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { createAuthClient } from 'better-auth/react';
 
+import { AUTH_ERROR_FALLBACK, authErrorFor } from '@/components/auth-errors';
 import { clearCacheStorage } from '@/components/Pwa';
 
 /**
@@ -19,12 +20,6 @@ const PROVIDERS = [
 ] as const;
 
 type ProviderId = (typeof PROVIDERS)[number]['id'];
-
-/** ข้อความ error แบบผู้ใช้อ่าน — ห้ามโชว์รหัส/ข้อความดิบของ provider (design.md §4) */
-function messageFor(code: string | undefined): string {
-  if (code === 'access_denied' || code === 'cancelled') return 'ยกเลิกการล็อกอินไปแล้ว ลองใหม่ได้เลย';
-  return 'ล็อกอินไม่สำเร็จ ลองใหม่';
-}
 
 /**
  * ปุ่มล็อกอิน Google/LINE (design.md §2: สูง ≥44 · ใช้โทเคนสีเท่านั้น)
@@ -42,8 +37,14 @@ export function LoginButtons({ enabled }: { enabled: Record<ProviderId, boolean>
       // ล้างของเดิมก่อนสลับบัญชี — ห้ามให้ HTML/cache ของผู้ใช้คนก่อนอยู่ในเครื่องตอนบัญชีใหม่เข้ามา
       await clearCacheStorage();
       // callbackURL = '/': กลับหน้าแรกหลังล็อกอินสำเร็จ (PLAN §3)
-      const { error: failure } = await authClient.signIn.social({ provider, callbackURL: '/' });
-      if (failure) setError(messageFor(failure.code));
+      // errorCallbackURL = '/login': callback ล้ม (state ผิด/โค้ดใช้ไม่ได้) → กลับมาหน้านี้พร้อม ?error=<code>
+      // เพื่อให้มีข้อความบอกผู้ใช้ — เดิมไม่ตั้งค่านี้ better-auth จึงพาไป /error เปล่า ๆ (wave24)
+      const { error: failure } = await authClient.signIn.social({
+        provider,
+        callbackURL: '/',
+        errorCallbackURL: '/login',
+      });
+      if (failure) setError(authErrorFor(failure.code) ?? AUTH_ERROR_FALLBACK);
     } catch {
       setError('ล็อกอินไม่สำเร็จ ลองใหม่');
     } finally {

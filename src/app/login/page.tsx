@@ -1,17 +1,11 @@
 import { redirect } from 'next/navigation';
 
 import { LoginButtons } from '@/components/AuthButtons';
+import { authErrorFor } from '@/components/auth-errors';
 import { isNextControlFlow } from '@/lib/next-signals';
 import { getSession } from '@/lib/session';
 
 export const metadata = { title: 'เข้าสู่ระบบ · จดจ่าย' };
-
-/** ข้อความ error ที่ผู้ใช้อ่านรู้เรื่อง — ห้ามโชว์รหัส/ข้อความดิบของ provider (design.md §4) */
-function errorMessage(code: string | undefined): string | null {
-  if (!code) return null;
-  if (code === 'access_denied' || code === 'cancelled') return 'ยกเลิกการล็อกอินไปแล้ว ลองใหม่ได้เลย';
-  return 'ล็อกอินไม่สำเร็จ ลองใหม่';
-}
 
 /**
  * S1 เข้าสู่ระบบ (design.md §4 S1)
@@ -33,7 +27,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     google: Boolean(process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim()),
     line: Boolean(process.env.LINE_CLIENT_ID?.trim() && process.env.LINE_CLIENT_SECRET?.trim()),
   };
-  const error = errorMessage((await searchParams).error);
+  // รหัสที่ better-auth แนบมากับ callback ที่ล้ม (errorCallbackURL ใน AuthButtons) — map เป็นข้อความไทยเท่านั้น
+  const error = authErrorFor((await searchParams).error);
 
   return (
     <div className="flex flex-col gap-6 pt-6">
