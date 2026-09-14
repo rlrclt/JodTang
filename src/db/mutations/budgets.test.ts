@@ -117,7 +117,7 @@ test('เพดานเงิน: amount สูงสุดที่รับ�
   );
   await rejectsThai(
     setBudget(db, SESSION_1, { categoryId: C_FOOD, periodMonth: '2026-11-01', amount: 12.5 }),
-    /สตางค์จำนวนเต็ม/,
+    /จำนวนเต็มหน่วยสตางค์/,
   );
   assert.equal(await countBudgets(), before, 'input ผิดต้องไม่แตะตาราง');
 });

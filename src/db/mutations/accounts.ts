@@ -15,7 +15,7 @@
  */
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 
-import { toSatang } from '../../lib/money.ts';
+import { formatSatang, toSatang } from '../../lib/money.ts';
 import { guardWrite, ValidationError } from '../errors.ts';
 import type { Db } from '../index.ts';
 import { ACCOUNT_COLUMNS, ACCOUNT_KINDS, type AccountKind, type AccountRow } from '../queries/accounts.ts';
@@ -53,13 +53,13 @@ function optionalText(value: unknown, field: string): string | null {
 /** ตรวจกติกาทั้งชุดของกระเป๋า (ใช้ทั้งตอนเพิ่มและตอนแก้ — ตอนแก้ประกอบร่างใหม่ก่อนแล้วเรียกตัวเดียวกัน) */
 export function validateAccount(input: unknown): ValidAccount {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    throw new ValidationError('ข้อมูลกระเป๋าต้องเป็น object');
+    throw new ValidationError('รูปแบบข้อมูลกระเป๋าไม่ถูกต้อง');
   }
   const raw = input as Record<string, unknown>;
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_KEYS.includes(key)) {
-      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} จาก input`);
+      throw new ValidationError('ไม่อนุญาตให้ส่งข้อมูลที่ไม่รองรับมา');
     }
   }
 
@@ -72,7 +72,7 @@ export function validateAccount(input: unknown): ValidAccount {
   // ไม่ส่ง kind = 'cash' (accounts.kind not null default 'cash' ใน DB) — ส่งมาแล้วต้องอยู่ในลิสต์ของ check
   const kind = raw.kind ?? 'cash';
   if (typeof kind !== 'string' || !ACCOUNT_KINDS.includes(kind as AccountKind)) {
-    throw new ValidationError('kind ต้องเป็น cash, bank, credit, ewallet หรือ other');
+    throw new ValidationError('ชนิดกระเป๋าไม่ถูกต้อง');
   }
 
   let initialBalance: number;
@@ -83,7 +83,7 @@ export function validateAccount(input: unknown): ValidAccount {
     throw new ValidationError((error as Error).message);
   }
   if (initialBalance <= -MAX_BALANCE || initialBalance >= MAX_BALANCE) {
-    throw new ValidationError('ยอดตั้งต้นเกินช่วงที่ระบบรองรับ');
+    throw new ValidationError(`ยอดตั้งต้นเกินช่วงที่ระบบรองรับ (สูงสุด ±${formatSatang(MAX_BALANCE - 1)})`);
   }
 
   return {
@@ -133,13 +133,13 @@ export async function updateAccount(
 ): Promise<AccountRow> {
   const rowId = requiredText(id, 'id ของกระเป๋า');
   if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-    throw new ValidationError('ข้อมูลที่แก้ต้องเป็น object');
+    throw new ValidationError('รูปแบบข้อมูลที่แก้ไม่ถูกต้อง');
   }
 
   const current = await guardWrite(() =>
     db.select(ACCOUNT_COLUMNS).from(accounts).where(ownActiveAccount(session, rowId)),
   );
-  if (current.length === 0) throw new ValidationError('ไม่พบกระเป๋านี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+  if (current.length === 0) throw new ValidationError('ไม่พบกระเป๋านี้ (อาจถูกเลิกใช้ไปแล้วหรือไม่ใช่ของคุณ)');
 
   const before = current[0];
   // ประกอบร่างจาก "ฟิลด์ที่ยอมรับ" เท่านั้น (current มี id/archivedAt ที่ validate ต้องปฏิเสธ) แล้วทับด้วย patch
@@ -168,7 +168,7 @@ export async function updateAccount(
 
   // แพ้การแข่ง: แถวถูก archive/หายไประหว่างอ่านกับเขียน → ต้องได้ ValidationError ไม่ใช่ undefined
   if (rows.length === 0) {
-    throw new ValidationError('ไม่พบกระเป๋านี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+    throw new ValidationError('ไม่พบกระเป๋านี้ (อาจถูกเลิกใช้ไปแล้วหรือไม่ใช่ของคุณ)');
   }
   return rows[0];
 }
@@ -207,7 +207,7 @@ export async function archiveAccount(db: Db, session: Session, id: string): Prom
     if (active.length > 0) {
       throw new ValidationError('ต้องมีกระเป๋าอย่างน้อย 1 ใบ — เลิกใช้ใบสุดท้ายไม่ได้');
     }
-    throw new ValidationError('ไม่พบกระเป๋านี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+    throw new ValidationError('ไม่พบกระเป๋านี้ (อาจถูกเลิกใช้ไปแล้วหรือไม่ใช่ของคุณ)');
   }
   return rows[0];
 }
@@ -233,7 +233,7 @@ export async function restoreAccount(db: Db, session: Session, id: string): Prom
   );
 
   if (rows.length === 0) {
-    throw new ValidationError('ไม่พบกระเป๋านี้ (หรือยังไม่ถูก archive / ไม่ใช่ของคุณ)');
+    throw new ValidationError('ไม่พบกระเป๋านี้ (หรือยังไม่ถูกเลิกใช้ / ไม่ใช่ของคุณ)');
   }
   return rows[0];
 }

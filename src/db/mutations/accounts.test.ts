@@ -137,8 +137,8 @@ test('initial_balance: ติดลบได้ (บัตรเครดิต)
   const bad = [
     { initialBalance: 1_000_000_000_000_000, expect: /เกินช่วง/ },
     { initialBalance: -1_000_000_000_000_000, expect: /เกินช่วง/ },
-    { initialBalance: 12.5, expect: /สตางค์จำนวนเต็ม/ },
-    { initialBalance: '100', expect: /number/ },
+    { initialBalance: 12.5, expect: /จำนวนเต็มหน่วยสตางค์/ },
+    { initialBalance: '100', expect: /ต้องเป็นตัวเลข/ },
   ];
   for (const { initialBalance, expect } of bad) {
     await assert.rejects(
@@ -155,7 +155,7 @@ test('initial_balance: ติดลบได้ (บัตรเครดิต)
 test('kind/currency/ฟิลด์ต้องห้าม ถูกปฏิเสธ · userId มาจาก session เท่านั้น', async () => {
   const before = await countRows('accounts');
   const bad: { input: Record<string, unknown>; expect: RegExp; why: string }[] = [
-    { input: { name: 'กระเป๋าใหม่', kind: 'crypto' }, expect: /kind ต้องเป็น/, why: 'kind นอกลิสต์ของ DB' },
+    { input: { name: 'กระเป๋าใหม่', kind: 'crypto' }, expect: /ชนิดกระเป๋าไม่ถูกต้อง/, why: 'kind นอกลิสต์ของ DB' },
     { input: { name: 'กระเป๋าใหม่', currency: 'USD' }, expect: /ไม่อนุญาต/, why: 'currency ตรึง THB' },
     { input: { name: 'กระเป๋าใหม่', userId: U2 }, expect: /ไม่อนุญาต/, why: 'userId จาก input' },
     { input: { name: 'กระเป๋าใหม่', archivedAt: new Date() }, expect: /ไม่อนุญาต/, why: 'archivedAt จาก input' },

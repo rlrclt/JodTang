@@ -15,7 +15,7 @@
  */
 import { and, eq, isNull } from 'drizzle-orm';
 
-import { toSatang } from '../../lib/money.ts';
+import { formatSatang, toSatang } from '../../lib/money.ts';
 import { guardWrite, ValidationError } from '../errors.ts';
 import type { Db } from '../index.ts';
 import type { Session } from '../session.ts';
@@ -69,19 +69,19 @@ function requiredText(value: unknown, field: string): string {
  */
 export function validateTransaction(input: unknown): ValidTransaction {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    throw new ValidationError('ข้อมูลรายการต้องเป็น object');
+    throw new ValidationError('รูปแบบข้อมูลรายการไม่ถูกต้อง');
   }
   const raw = input as Record<string, unknown>;
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_KEYS.includes(key)) {
-      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} จาก input`);
+      throw new ValidationError('ไม่อนุญาตให้ส่งข้อมูลที่ไม่รองรับมา');
     }
   }
 
   const { kind } = raw;
   if (typeof kind !== 'string' || !KINDS.includes(kind as TxnKindInput)) {
-    throw new ValidationError('kind ต้องเป็น income, expense หรือ transfer');
+    throw new ValidationError('ประเภทรายการไม่ถูกต้อง (ต้องเป็นรับ จ่าย หรือโอน)');
   }
 
   let amount: number;
@@ -91,7 +91,7 @@ export function validateTransaction(input: unknown): ValidTransaction {
     throw new ValidationError((error as Error).message);
   }
   if (amount <= 0) throw new ValidationError('จำนวนเงินต้องมากกว่า 0');
-  if (amount >= MAX_SATANG) throw new ValidationError('จำนวนเงินเกินเพดานที่ระบบรองรับ');
+  if (amount >= MAX_SATANG) throw new ValidationError(`จำนวนเงินสูงเกินเพดานที่ระบบรองรับ (สูงสุด ${formatSatang(MAX_SATANG - 1)})`);
 
   const accountId = requiredText(raw.accountId, 'กระเป๋าเงิน');
   const toAccountId = raw.toAccountId == null ? null : requiredText(raw.toAccountId, 'กระเป๋าปลายทาง');
@@ -177,7 +177,7 @@ export async function updateTransaction(
 ): Promise<TxnRow> {
   const rowId = requiredText(id, 'id ของรายการ');
   if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-    throw new ValidationError('ข้อมูลที่แก้ต้องเป็น object');
+    throw new ValidationError('รูปแบบข้อมูลที่แก้ไม่ถูกต้อง');
   }
   if ('kind' in (patch as Record<string, unknown>)) {
     throw new ValidationError('เปลี่ยนประเภทรายการไม่ได้ — ให้ลบแล้วสร้างใหม่');

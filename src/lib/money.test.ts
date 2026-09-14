@@ -144,14 +144,14 @@ test("expenseByCategory: ไม่นับ transfer/แถวที่ลบ �
   // (money.ts โยน Error เปล่าโดยตั้งใจ — assert ที่ข้อความ ไม่ผูกกับคลาส เพื่อไม่เปิดรีวิวเงินรอบใหม่)
   assert.throws(
     () => expenseByCategory([{ kind: "expense", amount: 10, accountId: A, deletedAt: null } as unknown as MoneyRow]),
-    /categoryId/,
+    /รายจ่ายต้องมีหมวด/,
   );
   assert.throws(
     () =>
       expenseByCategory([
         { kind: "expense", amount: 10, accountId: A, categoryId: "", deletedAt: null } as unknown as MoneyRow,
       ]),
-    /categoryId/, // สตริงว่างต้องเข้าเคสเดียวกับ "ไม่มีหมวด" (fail-closed)
+    /รายจ่ายต้องมีหมวด/, // สตริงว่างต้องเข้าเคสเดียวกับ "ไม่มีหมวด" (fail-closed)
   );
 });
 

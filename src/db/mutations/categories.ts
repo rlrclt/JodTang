@@ -55,19 +55,19 @@ function optionalText(value: unknown, field: string): string | null {
 /** ตรวจกติกาทั้งชุดของหมวด (ใช้ทั้งตอนเพิ่มและตอนแก้ — ตอนแก้ประกอบร่างใหม่ก่อนแล้วเรียกตัวเดียวกัน) */
 export function validateCategory(input: unknown): ValidCategory {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    throw new ValidationError('ข้อมูลหมวดต้องเป็น object');
+    throw new ValidationError('รูปแบบข้อมูลหมวดไม่ถูกต้อง');
   }
   const raw = input as Record<string, unknown>;
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_KEYS.includes(key)) {
-      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} จาก input`);
+      throw new ValidationError('ไม่อนุญาตให้ส่งข้อมูลที่ไม่รองรับมา');
     }
   }
 
   const { kind } = raw;
   if (typeof kind !== 'string' || !CATEGORY_KINDS.includes(kind as CategoryKind)) {
-    throw new ValidationError('kind ต้องเป็น income หรือ expense');
+    throw new ValidationError('ประเภทหมวดไม่ถูกต้อง (ต้องเป็นรายรับหรือรายจ่าย)');
   }
 
   // เก็บชื่อแบบตัดช่องว่างหัวท้าย (DB บังคับ btrim(name) <> '' และ unique คิดแบบ lower(btrim(name)))
@@ -130,16 +130,16 @@ export async function updateCategory(
 ): Promise<CategoryRow> {
   const rowId = requiredText(id, 'id ของหมวด');
   if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-    throw new ValidationError('ข้อมูลที่แก้ต้องเป็น object');
+    throw new ValidationError('รูปแบบข้อมูลที่แก้ไม่ถูกต้อง');
   }
   if ('kind' in (patch as Record<string, unknown>)) {
-    throw new ValidationError('เปลี่ยนประเภทหมวดไม่ได้ — ให้ archive แล้วสร้างใหม่');
+    throw new ValidationError('เปลี่ยนประเภทหมวดไม่ได้ — ให้เลิกใช้แล้วสร้างใหม่');
   }
 
   const current = await guardWrite(() =>
     db.select(CATEGORY_COLUMNS).from(categories).where(ownActiveCategory(session, rowId)),
   );
-  if (current.length === 0) throw new ValidationError('ไม่พบหมวดนี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+  if (current.length === 0) throw new ValidationError('ไม่พบหมวดนี้ (อาจถูกเลิกใช้ไปแล้วหรือไม่ใช่ของคุณ)');
 
   const before = current[0];
   // ประกอบร่างจาก "ฟิลด์ที่ยอมรับ" เท่านั้น (current มี id/archivedAt ที่ validate ต้องปฏิเสธ) แล้วทับด้วย patch
@@ -167,7 +167,7 @@ export async function updateCategory(
 
   // แพ้การแข่ง: แถวถูก archive/หายไประหว่างอ่านกับเขียน → ValidationError ไม่ใช่ undefined
   if (rows.length === 0) {
-    throw new ValidationError('ไม่พบหมวดนี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+    throw new ValidationError('ไม่พบหมวดนี้ (อาจถูกเลิกใช้ไปแล้วหรือไม่ใช่ของคุณ)');
   }
   return rows[0];
 }
@@ -185,7 +185,7 @@ export async function archiveCategory(db: Db, session: Session, id: string): Pro
   );
 
   if (rows.length === 0) {
-    throw new ValidationError('ไม่พบหมวดนี้ (อาจถูก archive ไปแล้วหรือไม่ใช่ของคุณ)');
+    throw new ValidationError('ไม่พบหมวดนี้ (อาจถูกเลิกใช้ไปแล้วหรือไม่ใช่ของคุณ)');
   }
   return rows[0];
 }
@@ -211,7 +211,7 @@ export async function restoreCategory(db: Db, session: Session, id: string): Pro
   );
 
   if (rows.length === 0) {
-    throw new ValidationError('ไม่พบหมวดนี้ (หรือยังไม่ถูก archive / ไม่ใช่ของคุณ)');
+    throw new ValidationError('ไม่พบหมวดนี้ (หรือยังไม่ถูกเลิกใช้ / ไม่ใช่ของคุณ)');
   }
   return rows[0];
 }

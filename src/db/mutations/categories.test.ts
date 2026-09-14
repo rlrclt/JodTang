@@ -129,8 +129,8 @@ test('ชื่อซ้ำใน kind เดียวกัน (พิมพ์
 test('kind/ฟิลด์ต้องห้าม/การเปลี่ยนประเภท ถูกปฏิเสธก่อนถึง DB', async () => {
   const before = await countRows('categories');
   const bad: { input: Record<string, unknown>; expect: RegExp; why: string }[] = [
-    { input: { kind: 'transfer', name: 'โอน' }, expect: /kind ต้องเป็น/, why: 'kind นอกลิสต์ของ DB' },
-    { input: { name: 'ไม่มี kind' }, expect: /kind ต้องเป็น/, why: 'ไม่ส่ง kind' },
+    { input: { kind: 'transfer', name: 'โอน' }, expect: /ประเภทหมวดไม่ถูกต้อง/, why: 'kind นอกลิสต์ของ DB' },
+    { input: { name: 'ไม่มี kind' }, expect: /ประเภทหมวดไม่ถูกต้อง/, why: 'ไม่ส่ง kind' },
     { input: { kind: 'expense', name: '   ' }, expect: /ชื่อหมวด/, why: 'ชื่อมีแต่ช่องว่าง' },
     { input: { kind: 'expense', name: 'x', sortOrder: 1.5 }, expect: /จำนวนเต็ม/, why: 'sortOrder ทศนิยม' },
     { input: { kind: 'expense', name: 'x', sortOrder: '1' }, expect: /จำนวนเต็ม/, why: 'sortOrder เป็นสตริง' },

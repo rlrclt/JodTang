@@ -12,7 +12,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 
-import { toSatang } from '../../lib/money.ts';
+import { formatSatang, toSatang } from '../../lib/money.ts';
 import type { PeriodMonth } from '../../lib/month.ts';
 import { guardWrite, ValidationError } from '../errors.ts';
 import type { Db } from '../index.ts';
@@ -55,13 +55,13 @@ function requiredPeriodMonth(value: unknown): PeriodMonth {
 /** ตรวจกติกาทั้งชุดของงบหนึ่งแถว (โยน ValidationError เสมอเมื่อไม่ผ่าน เพื่อให้ผู้เรียกแยกจาก error ของ DB) */
 export function validateBudget(input: unknown): ValidBudget {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    throw new ValidationError('ข้อมูลงบประมาณต้องเป็น object');
+    throw new ValidationError('รูปแบบข้อมูลงบประมาณไม่ถูกต้อง');
   }
   const raw = input as Record<string, unknown>;
 
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_KEYS.includes(key)) {
-      throw new ValidationError(`ไม่อนุญาตให้ส่งฟิลด์ ${key} จาก input`);
+      throw new ValidationError('ไม่อนุญาตให้ส่งข้อมูลที่ไม่รองรับมา');
     }
   }
 
@@ -75,7 +75,7 @@ export function validateBudget(input: unknown): ValidBudget {
     throw new ValidationError((error as Error).message);
   }
   if (amount <= 0) throw new ValidationError('จำนวนเงินต้องมากกว่า 0');
-  if (amount >= MAX_SATANG) throw new ValidationError('จำนวนเงินเกินเพดานที่ระบบรองรับ');
+  if (amount >= MAX_SATANG) throw new ValidationError(`จำนวนเงินสูงเกินเพดานที่ระบบรองรับ (สูงสุด ${formatSatang(MAX_SATANG - 1)})`);
 
   return { categoryId, periodMonth, amount };
 }

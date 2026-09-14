@@ -53,9 +53,16 @@ export type Totals = {
  * ค่าที่ไม่ผ่านต้องล้มเสียงดัง ไม่ใช่คืนยอดเพี้ยน
  */
 export function toSatang(value: unknown, label = 'จำนวนเงิน'): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+  // ⚠ ข้อความในไฟล์นี้ถึงผู้ใช้ได้ (validator ห่อต่อเป็น ValidationError) → ห้ามมีศัพท์เทคนิค
+  //   (number/string/integer/typeof/ชื่อคอลัมน์) — ต้องเป็นไทยล้วนและบอกทางแก้ (รีวิว a11y wave18b)
+  if (typeof value !== 'number') {
+    throw new TypeError(`${label}ต้องเป็นตัวเลข`);
+  }
+  if (!Number.isSafeInteger(value)) {
     throw new TypeError(
-      `${label}ต้องเป็น number สตางค์จำนวนเต็มในช่วง safe integer (ได้ ${typeof value}: ${String(value)})`,
+      Number.isInteger(value)
+        ? `${label}สูงเกินขอบเขตที่ระบบคำนวณได้`
+        : `${label}ต้องเป็นจำนวนเต็มหน่วยสตางค์`,
     );
   }
   return value;
@@ -74,7 +81,7 @@ export function satangFromDb(value: unknown, label = 'ยอดรวมจา�
   if (value == null) return 0;
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value)) {
-      throw new RangeError(`${label}ไม่ใช่จำนวนเต็มที่ปลอดภัย (${value}) — ยอดเพี้ยนแล้ว ห้ามแสดง`);
+      throw new RangeError(`${label}ไม่ใช่จำนวนเต็มที่ระบบคำนวณได้ (ยอดเพี้ยนแล้ว ห้ามแสดง)`);
     }
     return value;
   }
@@ -83,10 +90,10 @@ export function satangFromDb(value: unknown, label = 'ยอดรวมจา�
   try {
     big = typeof value === 'bigint' ? value : BigInt(String(value).trim());
   } catch {
-    throw new RangeError(`${label}อ่านเป็นจำนวนเต็มไม่ได้ (${String(value)})`);
+    throw new RangeError(`${label}อ่านเป็นตัวเลขไม่ได้`);
   }
   if (big > MAX_SAFE_SATANG || big < -MAX_SAFE_SATANG) {
-    throw new RangeError(`${label}หลุดช่วง safe integer (${big}) — ยอดเพี้ยนแล้ว ห้ามแสดง`);
+    throw new RangeError(`${label}สูงเกินขอบเขตที่ระบบคำนวณได้ (ยอดเพี้ยนแล้ว ห้ามแสดง)`);
   }
   return Number(big);
 }
@@ -105,14 +112,12 @@ export function periodTotals(rows: readonly MoneyRow[]): Totals {
   let expense = 0;
   for (const row of rows) {
     if (!isCounted(row)) continue;
-    const amount = toSatang(row.amount, "amount ของแถว"); // ตรวจ input ก่อนบวก ไม่ใช่ตรวจยอดหลังรวม
+    const amount = toSatang(row.amount, "ยอดของรายการ"); // ตรวจ input ก่อนบวก ไม่ใช่ตรวจยอดหลังรวม
     if (row.kind === "income") income += amount;
     else expense += amount;
   }
   if (!Number.isSafeInteger(income) || !Number.isSafeInteger(expense)) {
-    throw new RangeError(
-      `ยอดรวมหลุดช่วง safe integer (income=${income} · expense=${expense}) — ยอดเพี้ยนแล้ว ห้ามแสดง`,
-    );
+    throw new RangeError('ยอดรวมของเดือนสูงเกินขอบเขตที่ระบบคำนวณได้ (ยอดเพี้ยนแล้ว ห้ามแสดง)');
   }
   return { income, expense, balance: income - expense };
 }
@@ -127,11 +132,11 @@ export function expenseByCategory(rows: readonly MoneyRow[]): Map<string, number
   for (const row of rows) {
     if (!isCounted(row) || row.kind !== "expense") continue;
     if (!row.categoryId) {
-      throw new Error("รายจ่ายต้องมี categoryId (ฝั่ง DB บังคับด้วย transactions_shape_ck)");
+      throw new Error("รายจ่ายต้องมีหมวด (ฐานข้อมูลบังคับไว้แล้ว)");
     }
-    const next = (totals.get(row.categoryId) ?? 0) + toSatang(row.amount, "amount ของแถว");
+    const next = (totals.get(row.categoryId) ?? 0) + toSatang(row.amount, "ยอดของรายการ");
     if (!Number.isSafeInteger(next)) {
-      throw new RangeError(`ยอดหมวด ${row.categoryId} หลุดช่วง safe integer (${next})`);
+      throw new RangeError("ยอดรวมของหมวดสูงเกินขอบเขตที่ระบบคำนวณได้ (ยอดเพี้ยนแล้ว ห้ามแสดง)");
     }
     totals.set(row.categoryId, next);
   }
@@ -147,7 +152,7 @@ export function accountBalance(
   let sum = toSatang(initialBalance, "ยอดตั้งต้น");
   for (const row of rows) {
     if (row.deletedAt != null) continue;
-    const amount = toSatang(row.amount, "amount ของแถว"); // กันเงินเป็นสตริงแล้วต่อกันเงียบ ๆ
+    const amount = toSatang(row.amount, "ยอดของรายการ"); // กันเงินเป็นสตริงแล้วต่อกันเงียบ ๆ
     if (row.kind === "income") {
       if (row.accountId === accountId) sum += amount;
     } else if (row.kind === "expense") {
@@ -159,7 +164,7 @@ export function accountBalance(
     }
   }
   if (!Number.isSafeInteger(sum)) {
-    throw new RangeError(`ยอดคงเหลือหลุดช่วง safe integer (${sum}) — ยอดเพี้ยนแล้ว ห้ามแสดง`);
+    throw new RangeError("ยอดคงเหลือสูงเกินขอบเขตที่ระบบคำนวณได้ (ยอดเพี้ยนแล้ว ห้ามแสดง)");
   }
   return sum;
 }
