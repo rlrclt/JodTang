@@ -91,3 +91,69 @@ jobs:
           done
 
           node scripts/prod-smoke.mjs "http://127.0.0.1:$PORT"
+
+  # e2e ที่มี session จริง — ตรวจ flow ที่ต้องล็อกอิน (ยอดเงิน · รายการ · งบ · ถังขยะ · ส่งออก · ตั้งค่าอีเมล)
+  #   ใช้ Postgres service (ไม่ใช่ Neon) ⇒ ไม่ต้องมี secret จริงในไฟล์นี้
+  #   ทุกค่าปลอมถูกกำหนดใน job (BETTER_AUTH_SECRET ปลอม) · DATABASE_URL ชี้ service ในเครื่อง runner
+  e2e:
+    name: e2e smoke (จริง · มี session)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: jodjai
+          POSTGRES_PASSWORD: jodjai-ci-not-a-real-credential
+          POSTGRES_DB: jodjai_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jodjai -d jodjai_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # ค่าปลอมสำหรับ CI เท่านั้น (ไม่ใช่ credential จริง) — BETTER_AUTH_URL ต้องเป็น https เพราะ production fail-fast
+      BETTER_AUTH_URL: https://example.com
+      BETTER_AUTH_SECRET: ci-e2e-dummy-secret-not-a-real-credential-000000
+      DATABASE_URL: postgresql://jodjai:jodjai-ci-not-a-real-credential@127.0.0.1:5432/jodjai_e2e
+      DATABASE_URL_DIRECT: postgresql://jodjai:jodjai-ci-not-a-real-credential@127.0.0.1:5432/jodjai_e2e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # e2e-smoke ต่อ Postgres ตรง ๆ ด้วยไดรเวอร์ `pg` ที่ pin ไว้ใน devDependencies แล้ว
+      #   (แอปจริงใช้ @neondatabase/serverless ⇒ pg อยู่ใน devDependencies เท่านั้น ไม่กระทบ bundle/runtime)
+      - name: Migrate schema (service DB)
+        run: npm run migrate
+
+      - name: Build
+        run: npx next build
+
+      - name: Start server + run e2e smoke
+        run: |
+          set -euo pipefail
+          PORT=3601
+          ./node_modules/.bin/next start -p "$PORT" > /tmp/next-e2e.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in $(seq 1 60); do
+            if curl -sf "http://127.0.0.1:$PORT/login" > /dev/null; then
+              echo "server พร้อมหลัง ${attempt} วิ"
+              break
+            fi
+            sleep 1
+          done
+
+          BASE_URL="http://127.0.0.1:$PORT" node scripts/e2e-smoke.mjs

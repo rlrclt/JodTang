@@ -33,6 +33,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "15.5.25",
+    "pg": "8.23.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
