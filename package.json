@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test src/",
     "migrate": "drizzle-kit migrate",
     "smoke:prod": "node scripts/prod-smoke.mjs"
   },

@@ -60,9 +60,10 @@ jobs:
       - name: Lint
         run: ./node_modules/.bin/eslint .
 
-      # เทสต์ทั้งหมดของโปรเจกต์: ชั้นข้อมูล (PGlite), lib, และ component
+      # เทสต์ทั้งหมดของโปรเจกต์ — เรียกผ่าน `npm test` เพื่อใช้คำสั่งเดียวกับนักพัฒนา/README
+      # (`node --test src/` ให้ตัวรันของ Node ค้นหาไฟล์เทสต์เอง ⇒ ไฟล์ใหม่ถูกเก็บอัตโนมัติ ไม่มีรายชื่อให้เน่า)
       - name: Test
-        run: node --test "src/db/**/*.test.ts" src/lib/*.test.ts src/components/*.test.ts
+        run: npm test
 
       - name: Build
         run: npx next build
