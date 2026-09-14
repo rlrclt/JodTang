@@ -332,3 +332,51 @@ test('คำค้นยาวเกิน 200 ตัวอักษรถูก
   const exact = await listTransactionPage(db, U1, { q: 'B'.repeat(200), limit: 100 });
   assert.deepEqual(exact.rows.map((row) => row.amount), [4242], 'คำค้นที่พอดี 200 ตัวก็ยังทำงาน');
 });
+
+test('โหมดทุกเดือน (ไม่ส่ง periodMonth): ข้ามเดือนจริง · ตัวกรองอื่นใช้ร่วมได้ · total นิ่ง · ไม่ปนผู้ใช้อื่น', async () => {
+  const all = await listTransactionPage(db, U1, { limit: 100 });
+  const expected = await liveCount();
+  assert.equal(all.total, expected, 'total = ทุกแถวที่ยังไม่ถูกลบของผู้ใช้ (ไม่ผูกกับเดือน)');
+
+  // รูปร่างผลลัพธ์: เป็น "ลิสต์" เท่านั้น — ไม่มียอดสรุปของเดือนติดมา (ยอดสรุปเป็นงานของ monthTotals)
+  assert.deepEqual(Object.keys(all).sort(), ['nextCursor', 'rows', 'total']);
+
+  // ครอบทุกงวดเดือนที่มีจริง (เทียบกับ occurred_month_bkk ที่ DB generate — ไม่เดาจาก ISO เพราะเป็น UTC)
+  const months = await pglite.query<{ m: string; n: number }>(`
+    select occurred_month_bkk::text as m, count(*)::int as n
+      from transactions where user_id = '${U1}' and deleted_at is null group by 1 order by 1`);
+  assert.ok(months.rows.length >= 3, `fixture ต้องมีอย่างน้อย 3 งวดเดือน (ได้ ${months.rows.length})`);
+
+  const pageIds = new Set(all.rows.map((row) => row.id));
+  for (const { m, n } of months.rows) {
+    const month = await listTransactionPage(db, U1, { periodMonth: m, limit: 100 });
+    assert.equal(month.total, n, `โหมดเดือนเดียวของ ${m} ต้องได้แค่เดือนนั้น`);
+    assert.ok(
+      month.rows.every((row) => pageIds.has(row.id)),
+      `ทุกแถวของ ${m} ต้องอยู่ในโหมดทุกเดือน (ไม่มีแถวหาย)`,
+    );
+    assert.ok(month.total < all.total, `โหมดเดือนเดียวต้องน้อยกว่าโหมดทุกเดือน (${m})`);
+  }
+
+  // keyset ในโหมดทุกเดือน: total นิ่งทุกหน้า (ไล่จริง 2 หน้า)
+  const first = await listTransactionPage(db, U1, { limit: 3 });
+  assert.ok(first.nextCursor);
+  const second = await listTransactionPage(db, U1, { limit: 3, cursor: first.nextCursor });
+  assert.equal(second.total, all.total, 'total ต้องเท่าเดิมทุกหน้าในโหมดทุกเดือน');
+  assert.ok(
+    !second.rows.some((row) => first.rows.some((prev) => prev.id === row.id)),
+    'หน้าถัดไปต้องไม่ซ้ำกับหน้าแรก',
+  );
+
+  // ตัวกรองอื่นใช้ร่วมกับโหมดทุกเดือนได้ (ไม่ส่ง periodMonth)
+  const filtered = await listTransactionPage(db, U1, { kind: 'expense', categoryIds: [C_FOOD], q: 'ข้าว', limit: 100 });
+  assert.ok(filtered.total >= 1, 'ต้องเจอรายจ่ายหมวดอาหารที่มีคำว่า ข้าว (ข้ามเดือน)');
+  assert.ok(filtered.rows.every((row) => row.kind === 'expense' && row.categoryId === C_FOOD));
+  const bankRows = await listTransactionPage(db, U1, { accountId: A2, limit: 100 });
+  assert.ok(bankRows.total >= 1, 'กรองกระเป๋าใช้ได้ในโหมดทุกเดือน');
+
+  // ของผู้ใช้คนอื่นไม่หลุด
+  const other = await listTransactionPage(db, U2, { limit: 100 });
+  assert.equal(other.total, 1, 'u2 เห็นเฉพาะรายการของตัวเอง');
+  assert.ok(all.rows.every((row) => !other.rows.some((o) => o.id === row.id)));
+});
