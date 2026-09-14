@@ -112,6 +112,18 @@ export default async function SettingsPage() {
             </span>
           </Link>
         </li>
+        {/* ส่งออกข้อมูล — หน้าที่ทำงานจริงแล้ว (wave27): CSV + JSON (ไม่รวมรายการที่ลบแล้ว) */}
+        <li className="border-b border-border">
+          <Link href="/settings/export" className="flex min-h-14 items-center justify-between gap-3 px-4">
+            <span>ส่งออกข้อมูล</span>
+            <span className="flex items-center gap-1 text-[13px] text-text-muted">
+              CSV / JSON
+              <svg className="size-4" aria-hidden="true">
+                <use href="#i-chevron-right" />
+              </svg>
+            </span>
+          </Link>
+        </li>
         {/* ธีม: ไม่มีแถว "เร็ว ๆ นี้" ค้างในลิสต์ (wave18 sweep) — แอปยังไม่มีตัวสลับธีมใน UI
             ตัวจริงตามระบบทำงานอยู่ (THEME_SCRIPT ใน layout) และบอกความจริงไว้ท้ายหน้าแทนปุ่มที่กดไม่ได้ */}
       </ul>

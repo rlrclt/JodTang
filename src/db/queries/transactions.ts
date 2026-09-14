@@ -59,12 +59,13 @@ export const toRows = (rows: Selected[]): TxnRow[] => rows.map((row) => ({ ...ro
 /**
  * เงื่อนไขกลางของทุก query: ของผู้ใช้คนนี้ + ยังไม่ถูกลบ (ห้ามลบ/ห้ามข้าม)
  * drizzle's and() ประกาศคืน SQL | undefined เมื่ออาร์กิวเมนต์เป็นลิสต์ จึงยืนยันชนิดตรงจุดเดียวนี้
+ * (export ให้ src/db/queries/export.ts ใช้ตัวเดียวกัน — ห้ามประกอบเงื่อนไขนี้ซ้ำที่อื่น)
  */
-const liveOf = (userId: string): SQL<unknown> =>
+export const liveOf = (userId: string): SQL<unknown> =>
   and(eq(transactions.userId, userId), isNull(transactions.deletedAt)) as SQL<unknown>;
 
 /** keyset: (occurred_at, id) < (cursor.occurred_at, cursor.id) — ไม่ใช้ OFFSET (schema.sql) */
-const afterCursor = (cursor: KeysetCursor): SQL<unknown> =>
+export const afterCursor = (cursor: KeysetCursor): SQL<unknown> =>
   or(
     lt(transactions.occurredAt, cursor.occurredAt),
     and(eq(transactions.occurredAt, cursor.occurredAt), lt(transactions.id, cursor.id)),
@@ -144,7 +145,7 @@ const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_SEARCH_LENGTH = 200;
 
 /** count(*) ของ PG กลับมาเป็น int8 (ไดรเวอร์อาจส่งเป็นสตริง) → number · จำนวนแถวไม่มีทางเกิน 2^53 ในทางปฏิบัติ */
-const rowCount = (value: unknown): number => (typeof value === 'number' ? value : Number(value ?? 0));
+export const rowCount = (value: unknown): number => (typeof value === 'number' ? value : Number(value ?? 0));
 
 const pageLimit = (limit?: number) => Math.min(Math.max(limit ?? DEFAULT_PAGE_LIMIT, 1), MAX_PAGE_LIMIT);
 
